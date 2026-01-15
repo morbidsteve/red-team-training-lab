@@ -1,0 +1,209 @@
+# Red Team Training Lab
+
+A complete attack training environment for CYROID. Students learn offensive security by executing a full attack chain against a simulated small business network.
+
+## Attack Scenarios
+
+| Phase | Technique | Target | Outcome |
+|-------|-----------|--------|---------|
+| Initial Access | SQL Injection | WordPress | Credential dump |
+| Initial Access | SSH Brute Force | Web server | Shell access |
+| Initial Access | BeEF + XSS | Workstation | Browser hook |
+| Lateral Movement | VPN with stolen creds | RouterOS | Internal access |
+| Privilege Escalation | DCSync | Domain Controller | Domain Admin |
+| Impact | Data Exfil + Ransomware | File Server | Mission complete |
+
+## Network Topology
+
+```
+ATTACKER (Kali)
+    │
+    ├── Redirector 1 ──── Redirector 2
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│           INTERNET (172.16.0.0/24)      │
+│  WordPress ◄───────────────────────────────── SQLi Target
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│             DMZ (172.16.1.0/24)         │
+│  Workstation ◄─────────────────────────────── BeEF Victim
+└─────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│          INTERNAL (172.16.2.0/24)       │
+│  DC + File Server ◄────────────────────────── Final Target
+└─────────────────────────────────────────┘
+```
+
+## Deployment Options
+
+### Option 1: Import to Existing CYROID
+
+If you already have CYROID running:
+
+```bash
+# 1. Build container images
+cd scenarios/red-team-lab/deploy
+./build-images.sh -r your-registry.com/org build
+./build-images.sh -r your-registry.com/org push
+
+# 2. Get your CYROID API token (from the UI or via login)
+export CYROID_API_URL=https://your-cyroid.com/api
+export CYROID_TOKEN=your-jwt-token
+
+# 3. Import templates and create range
+python import-to-cyroid.py
+
+# 4. Deploy the range from CYROID UI
+```
+
+### Option 2: Export as JSON
+
+Export templates for manual import:
+
+```bash
+python deploy/import-to-cyroid.py --export-json redteam-lab.json
+```
+
+Then import via CYROID API or UI.
+
+### Option 3: Fresh CYROID Installation
+
+Clone and run everything:
+
+```bash
+# Start CYROID
+docker compose up -d
+
+# Build lab images
+cd scenarios/red-team-lab/deploy
+./build-images.sh build
+
+# Import to local CYROID
+export CYROID_API_URL=http://localhost:8000/api
+# Login via UI first, then get token
+python import-to-cyroid.py
+```
+
+## Components
+
+### Vulnerable WordPress (`containers/wordpress/`)
+
+- Ubuntu 22.04 with Apache, PHP, MySQL
+- Acme Employee Portal plugin with:
+  - SQL Injection in search parameter
+  - SQL Injection in employee_id parameter
+  - Stored XSS in notes field
+- SSH enabled with password auth (credential reuse)
+- `secrets` database accessible via SQLi
+
+### File Server (`containers/fileserver/`)
+
+- Samba with multiple shares
+- Sensitive data: `secret-formula.txt`, `employee-ssn.csv`, `passwords.txt`
+- User accounts match AD credentials
+
+### Workstation (`containers/workstation/`)
+
+- Headless Firefox with Selenium
+- Auto-browses WordPress every 60 seconds
+- Triggers BeEF hooks when attacker injects XSS
+
+### Windows DC (`containers/windows-dc/`)
+
+- Windows Server 2019 setup scripts
+- Creates `acmewidgets.local` domain
+- **Misconfiguration**: `svc_backup` has DCSync rights
+- Weak, reused passwords
+
+## Credentials
+
+All credentials are intentionally weak and reused across systems:
+
+| System | Username | Password | Notes |
+|--------|----------|----------|-------|
+| WordPress | admin | Acme2024! | Also SSH password |
+| WordPress | jsmith | Summer2024 | Also VPN/AD |
+| WordPress | mwilliams | Welcome123 | Also VPN/AD |
+| MySQL | wp_user | Acme2024! | Can read secrets DB |
+| RouterOS | admin | Mikr0t1k! | Router admin |
+| RouterOS | backup | backup123 | Weak for brute force |
+| AD | Administrator | Adm1n2024! | Domain admin |
+| AD | svc_backup | Backup2024! | Has DCSync rights |
+
+## Student Objectives
+
+1. **Domain Dominance**: Submit `krbtgt` or `Administrator` NTLM hash
+2. **Data Exfiltration**: Retrieve `secret-formula.txt` contents
+3. **Ransomware Demo**: Place ransom note on file server
+
+## Directory Structure
+
+```
+scenarios/red-team-lab/
+├── README.md               # This file
+├── range-blueprint.yml     # Full range definition
+├── configs/
+│   └── credentials.yml     # All lab credentials
+├── containers/
+│   ├── wordpress/          # SQLi/XSS target
+│   ├── fileserver/         # Sensitive data
+│   ├── workstation/        # BeEF victim
+│   └── windows-dc/         # DC setup scripts
+├── plugins/
+│   └── acme-employee-portal/  # Vulnerable WP plugin
+└── deploy/
+    ├── import-to-cyroid.py # Import script
+    └── build-images.sh     # Build containers
+```
+
+## Customization
+
+### Change Credentials
+
+Edit `configs/credentials.yml` and update:
+- `containers/wordpress/mysql-init.sql`
+- `containers/wordpress/setup.sh`
+- `containers/fileserver/entrypoint.sh`
+- `containers/windows-dc/oem/create-users.ps1`
+
+### Add New Attack Paths
+
+1. Create new container in `containers/`
+2. Add template to `deploy/import-to-cyroid.py`
+3. Update `range-blueprint.yml`
+4. Rebuild and reimport
+
+## For Instructors
+
+### Scaling for Multiple Students
+
+Each student should get their own range instance. CYROID handles this automatically:
+
+```bash
+# Create student ranges
+for i in $(seq 1 10); do
+    python import-to-cyroid.py --range-name "Red Team Lab - Student $i"
+done
+```
+
+### Monitoring Progress
+
+- Use CYROID event logs to track student activity
+- Check VM console access patterns
+- Review network traffic between VMs
+
+### Resetting Environments
+
+From CYROID UI:
+1. Stop range
+2. Delete range
+3. Reimport from templates
+
+## License
+
+For educational purposes only. Do not deploy on production networks.
