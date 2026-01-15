@@ -204,7 +204,7 @@ if [ "$DEPLOY_MODE" == "local" ]; then
 
     # Approve admin user (required for login)
     docker compose exec -T db psql -U cyroid -d cyroid -c \
-        "UPDATE users SET is_approved = true, role = 'admin' WHERE username = '${ADMIN_USER}';" > /dev/null 2>&1
+        "UPDATE users SET is_approved = true, role = 'ADMIN' WHERE username = '${ADMIN_USER}';" > /dev/null 2>&1
 
 fi  # End local setup
 
