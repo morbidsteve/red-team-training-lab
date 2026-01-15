@@ -1,0 +1,187 @@
+# Red Team Training Lab - Range Blueprint
+# This defines the complete attack training environment for CYROID
+
+name: "Red Team Training Lab"
+description: "Small business attack simulation with SQL injection, SSH brute force, and browser exploitation"
+version: "1.0.0"
+
+# Network topology
+networks:
+  - name: internet
+    subnet: "172.16.0.0/24"
+    gateway: "172.16.0.1"
+    description: "External/Internet-facing network"
+    internal: false
+
+  - name: dmz
+    subnet: "172.16.1.0/24"
+    gateway: "172.16.1.1"
+    description: "DMZ with web services"
+    internal: true
+
+  - name: internal
+    subnet: "172.16.2.0/24"
+    gateway: "172.16.2.1"
+    description: "Internal corporate network"
+    internal: true
+
+# VM/Container definitions
+vms:
+  # === ATTACKER INFRASTRUCTURE ===
+
+  - name: kali
+    hostname: kali
+    vm_type: linux_vm
+    linux_distro: kali
+    network: internet
+    ip_address: "172.16.0.10"
+    cpu: 4
+    ram_mb: 4096
+    disk_gb: 60
+    description: "Attacker's Kali Linux workstation"
+    tags: ["attacker", "kali"]
+
+  - name: redirector1
+    hostname: redir1
+    vm_type: container
+    base_image: "alpine:3.19"
+    network: internet
+    ip_address: "172.16.0.20"
+    cpu: 1
+    ram_mb: 256
+    description: "First hop redirector (socat)"
+    tags: ["attacker", "redirector"]
+    config_script: |
+      apk add --no-cache socat iptables
+      echo 1 > /proc/sys/net/ipv4/ip_forward
+
+  - name: redirector2
+    hostname: redir2
+    vm_type: container
+    base_image: "alpine:3.19"
+    network: internet
+    ip_address: "172.16.0.21"
+    cpu: 1
+    ram_mb: 256
+    description: "Second hop redirector (nginx)"
+    tags: ["attacker", "redirector"]
+
+  # === DMZ ===
+
+  - name: wordpress
+    hostname: webserver
+    vm_type: container
+    base_image: "scenarios/red-team-lab/containers/wordpress"
+    networks:
+      - network: internet
+        ip_address: "172.16.0.100"
+      - network: dmz
+        ip_address: "172.16.1.10"
+    cpu: 2
+    ram_mb: 2048
+    description: "WordPress server with vulnerable plugin (SQLi target)"
+    tags: ["victim", "web", "sqli"]
+    ports:
+      - "80:80"
+      - "22:22"
+
+  # === INTERNAL NETWORK ===
+
+  - name: dc
+    hostname: WIN-DC01
+    vm_type: windows_vm
+    windows_version: "2019"
+    network: internal
+    ip_address: "172.16.2.10"
+    cpu: 4
+    ram_mb: 4096
+    disk_gb: 80
+    description: "Windows Server 2019 Domain Controller"
+    tags: ["victim", "windows", "dc"]
+    username: "Administrator"
+    password: "Adm1n2024!"
+    display_type: "server"
+
+  - name: fileserver
+    hostname: fileserver
+    vm_type: container
+    base_image: "scenarios/red-team-lab/containers/fileserver"
+    network: internal
+    ip_address: "172.16.2.20"
+    cpu: 1
+    ram_mb: 1024
+    description: "Samba file server with sensitive data"
+    tags: ["victim", "samba", "exfil-target"]
+
+  - name: workstation
+    hostname: ws01
+    vm_type: container
+    base_image: "scenarios/red-team-lab/containers/workstation"
+    networks:
+      - network: internal
+        ip_address: "172.16.2.30"
+      - network: dmz
+        ip_address: "172.16.1.30"
+    cpu: 1
+    ram_mb: 1024
+    description: "Employee workstation (BeEF victim)"
+    tags: ["victim", "workstation", "beef-target"]
+    environment:
+      WORDPRESS_URL: "http://172.16.1.10"
+      BROWSE_INTERVAL: "60"
+
+# Attack scenarios documentation
+attack_scenarios:
+  - name: "SQL Injection to VPN Access"
+    steps:
+      - "Discover WordPress on 172.16.0.100"
+      - "Find Employee Directory page"
+      - "Exploit SQLi in search parameter"
+      - "Dump credentials from acme_employees table"
+      - "Discover secrets database with admin_accounts"
+      - "Use VPN credentials to connect through router"
+    tools: ["sqlmap", "curl"]
+
+  - name: "SSH Brute Force"
+    steps:
+      - "Use credentials from SQLi dump"
+      - "Spray against WordPress SSH (172.16.0.100:22)"
+      - "Gain shell access as admin user"
+    tools: ["hydra", "medusa"]
+
+  - name: "Browser Exploitation via BeEF"
+    steps:
+      - "Inject BeEF hook via stored XSS in WordPress"
+      - "Wait for workstation to browse (automated)"
+      - "Hook victim browser"
+      - "Steal credentials, redirect, keylog"
+    tools: ["beef-xss"]
+
+  - name: "Lateral Movement to Domain"
+    steps:
+      - "From VPN or compromised host, enumerate AD"
+      - "Run BloodHound to find attack paths"
+      - "Identify svc_backup with DCSync rights"
+      - "Execute DCSync attack"
+    tools: ["bloodhound", "impacket-secretsdump", "crackmapexec"]
+
+  - name: "Effects Delivery"
+    steps:
+      - "Access file server with compromised creds"
+      - "Exfiltrate secret-formula.txt"
+      - "Drop ransom note to demonstrate impact"
+    tools: ["smbclient", "impacket-psexec"]
+
+# Success criteria
+objectives:
+  - id: "domain_dominance"
+    description: "Obtain Administrator or krbtgt NTLM hash"
+    validation: "Submit hash to instructor"
+
+  - id: "data_exfil"
+    description: "Retrieve contents of secret-formula.txt"
+    validation: "Display file contents"
+
+  - id: "ransomware_demo"
+    description: "Place ransom note on sensitive share"
+    validation: "Screenshot of ransom.txt on file server"
