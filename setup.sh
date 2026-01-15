@@ -21,7 +21,7 @@ prompt() { echo -e "${CYAN}[?]${NC} $1"; }
 
 # CYROID repo and version
 CYROID_REPO="https://github.com/JongoDB/CYROID.git"
-CYROID_VERSION="v0.1.0"
+CYROID_VERSION="v0.1.1"
 CYROID_DIR="${CYROID_DIR:-$SCRIPT_DIR/../cyroid}"
 
 # Default credentials (can be overridden via env vars)

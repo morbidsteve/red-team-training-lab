@@ -9,6 +9,11 @@ until mysqladmin ping -h localhost --silent; do
     sleep 1
 done
 
+# Fix MySQL socket permissions for Apache/PHP access
+# The mysqld directory is created with 700 permissions by default,
+# which prevents www-data from accessing the socket
+chmod 755 /var/run/mysqld/
+
 # Initialize database
 mysql < /mysql-init.sql
 
