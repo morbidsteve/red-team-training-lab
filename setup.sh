@@ -33,12 +33,15 @@ echo ""
 # ----------------------------
 # Step 0: Choose CYROID Instance
 # ----------------------------
-prompt "Where do you want to deploy the Red Team Lab?"
-echo ""
-echo "  1) Local - Set up CYROID on this machine (default)"
-echo "  2) Remote - Use an existing CYROID instance"
-echo ""
-read -p "Enter choice [1]: " DEPLOY_CHOICE
+# Can be set via environment: DEPLOY_CHOICE=1 (local) or DEPLOY_CHOICE=2 (remote)
+if [ -z "$DEPLOY_CHOICE" ]; then
+    prompt "Where do you want to deploy the Red Team Lab?"
+    echo ""
+    echo "  1) Local - Set up CYROID on this machine (default)"
+    echo "  2) Remote - Use an existing CYROID instance"
+    echo ""
+    read -p "Enter choice [1]: " DEPLOY_CHOICE
+fi
 DEPLOY_CHOICE="${DEPLOY_CHOICE:-1}"
 
 if [ "$DEPLOY_CHOICE" == "2" ]; then
@@ -65,10 +68,13 @@ fi
 echo ""
 
 # Ask how many student ranges to create
-prompt "How many student lab environments do you want to create?"
-echo "  (Each student gets their own isolated network environment)"
-echo ""
-read -p "Enter number of students [1]: " NUM_STUDENTS
+# Can be set via environment: NUM_STUDENTS=5
+if [ -z "$NUM_STUDENTS" ]; then
+    prompt "How many student lab environments do you want to create?"
+    echo "  (Each student gets their own isolated network environment)"
+    echo ""
+    read -p "Enter number of students [1]: " NUM_STUDENTS
+fi
 NUM_STUDENTS="${NUM_STUDENTS:-1}"
 
 # Validate it's a number
@@ -269,9 +275,9 @@ for i in $(seq 1 $NUM_STUDENTS); do
     echo ""
     log "Creating range: $RANGE_NAME (subnet: 172.$((16 + SUBNET_OFFSET)).x.x)"
     if [ "$DEPLOY_MODE" == "local" ]; then
-        python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET 2>&1 | grep -E "^\s*(Created|===)" || true
+        python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET
     else
-        python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET 2>&1 | grep -E "^\s*(Created|===)" || true
+        python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET
     fi
 done
 
