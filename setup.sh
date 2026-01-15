@@ -44,7 +44,7 @@ DEPLOY_CHOICE="${DEPLOY_CHOICE:-1}"
 if [ "$DEPLOY_CHOICE" == "2" ]; then
     # Remote deployment
     echo ""
-    read -p "Enter CYROID API URL (e.g., https://cyroid.example.com/api): " REMOTE_API_URL
+    read -p "Enter CYROID API URL (e.g., https://cyroid.example.com/api/v1): " REMOTE_API_URL
     if [ -z "$REMOTE_API_URL" ]; then
         error "API URL is required"
     fi
@@ -145,12 +145,8 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     # Wait for API to be ready
     MAX_WAIT=120
     WAITED=0
-    while ! curl -s http://localhost/api/health > /dev/null 2>&1; do
+    while ! curl -s http://localhost:8000/health > /dev/null 2>&1; do
         if [ $WAITED -ge $MAX_WAIT ]; then
-            # Try alternate endpoint
-            if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-                break
-            fi
             error "CYROID API didn't start within ${MAX_WAIT}s. Check logs: docker compose logs api"
         fi
         sleep 2
@@ -160,12 +156,8 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     echo ""
     log "API is ready"
 
-    # Determine API URL (traefik vs direct)
-    if curl -s http://localhost/api/health > /dev/null 2>&1; then
-        API_URL="http://localhost/api"
-    else
-        API_URL="http://localhost:8000"
-    fi
+    # API URL with correct prefix
+    API_URL="http://localhost:8000/api/v1"
 
     # ----------------------------
     # Step 5: Create Admin User
