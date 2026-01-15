@@ -42,16 +42,15 @@ def get_templates(local=False, registry="ghcr.io/your-org"):
     return [
         {
             "name": "Red Team - Kali Attack Box",
-            "description": "Kali Linux with pre-installed penetration testing tools",
+            "description": "Kali Linux with KasmVNC desktop and penetration testing tools",
             "os_type": "linux",
             "os_variant": "Kali Linux",
             "vm_type": "container",
-            "base_image": "kalilinux/kali-rolling:latest",
+            "base_image": "kasmweb/kali-rolling-desktop:1.14.0",
             "default_cpu": 4,
             "default_ram_mb": 4096,
             "default_disk_gb": 60,
-            "tags": ["red-team", "attacker", "kali"],
-            "config_script": "apt-get update && apt-get install -y kali-linux-headless"
+            "tags": ["red-team", "attacker", "kali", "desktop"]
         },
         {
             "name": "Red Team - WordPress Target",

@@ -9,8 +9,11 @@ CONTAINERS_DIR="$SCRIPT_DIR/../containers"
 
 echo "=== Building Red Team Lab Images (Local) ==="
 echo ""
+echo "Note: Kali Attack Box uses official kasmweb/kali-rolling-desktop image"
+echo "      (will be pulled automatically on first deploy)"
+echo ""
 
-# Build with simple local tags
+# Build custom images
 echo "[1/3] Building WordPress (SQLi target)..."
 docker build -t redteam-lab-wordpress:latest "$CONTAINERS_DIR/wordpress/"
 
@@ -25,7 +28,7 @@ docker build -t redteam-lab-workstation:latest "$CONTAINERS_DIR/workstation/"
 echo ""
 echo "=== Build Complete ==="
 echo ""
-docker images | grep redteam-lab
+docker images | grep -E "redteam-lab"
 echo ""
 echo "Images are now available locally. CYROID can use them directly."
 echo ""
