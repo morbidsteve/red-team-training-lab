@@ -21,8 +21,8 @@ prompt() { echo -e "${CYAN}[?]${NC} $1"; }
 
 # Default credentials (can be overridden via env vars)
 ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_EMAIL="${ADMIN_EMAIL:-admin@redteamlab.local}"
-ADMIN_PASS="${ADMIN_PASS:-RedTeam2024!}"
+ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
+ADMIN_PASS="${ADMIN_PASS:-RedTeam2024}"
 
 echo ""
 echo "=============================================="
@@ -60,6 +60,20 @@ if [ "$DEPLOY_CHOICE" == "2" ]; then
     ADMIN_PASS="$REMOTE_PASS"
 else
     DEPLOY_MODE="local"
+fi
+
+echo ""
+
+# Ask how many student ranges to create
+prompt "How many student lab environments do you want to create?"
+echo "  (Each student gets their own isolated network environment)"
+echo ""
+read -p "Enter number of students [1]: " NUM_STUDENTS
+NUM_STUDENTS="${NUM_STUDENTS:-1}"
+
+# Validate it's a number
+if ! [[ "$NUM_STUDENTS" =~ ^[0-9]+$ ]] || [ "$NUM_STUDENTS" -lt 1 ]; then
+    error "Invalid number of students. Must be 1 or more."
 fi
 
 echo ""
@@ -142,10 +156,15 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     # Wait for services
     log "Waiting for services to start..."
 
-    # Wait for API to be ready
+    # Wait for API to be ready (via Traefik at port 80)
+    # Check if API responds with any valid HTTP code (not 502/503/000)
     MAX_WAIT=120
     WAITED=0
-    while ! curl -s http://localhost:8000/health > /dev/null 2>&1; do
+    while true; do
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/v1/auth/login 2>/dev/null)
+        if [[ "$HTTP_CODE" =~ ^[1-4] ]]; then
+            break  # Got a valid response (1xx-4xx means API is up)
+        fi
         if [ $WAITED -ge $MAX_WAIT ]; then
             error "CYROID API didn't start within ${MAX_WAIT}s. Check logs: docker compose logs api"
         fi
@@ -156,8 +175,8 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     echo ""
     log "API is ready"
 
-    # API URL with correct prefix
-    API_URL="http://localhost:8000/api/v1"
+    # API URL via Traefik
+    API_URL="http://localhost/api/v1"
 
     # ----------------------------
     # Step 5: Create Admin User
@@ -169,11 +188,17 @@ if [ "$DEPLOY_MODE" == "local" ]; then
         -H "Content-Type: application/json" \
         -d "{\"username\":\"${ADMIN_USER}\",\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASS}\"}" 2>&1) || true
 
-    if echo "$REGISTER_RESP" | grep -q "already"; then
+    if echo "$REGISTER_RESP" | grep -q '"id"'; then
+        log "Admin user created: ${ADMIN_USER}"
+    elif echo "$REGISTER_RESP" | grep -qi "already\|exists"; then
         log "Admin user already exists"
     else
-        log "Admin user created: ${ADMIN_USER}"
+        warn "Registration response: $REGISTER_RESP"
     fi
+
+    # Approve admin user (required for login)
+    docker compose exec -T db psql -U cyroid -d cyroid -c \
+        "UPDATE users SET is_approved = true, role = 'admin' WHERE username = '${ADMIN_USER}';" > /dev/null 2>&1
 
 fi  # End local setup
 
@@ -221,11 +246,34 @@ export CYROID_API_URL="$API_URL"
 export CYROID_TOKEN="$TOKEN"
 
 cd "$SCRIPT_DIR/scenarios/red-team-lab"
+
+# First import templates only
 if [ "$DEPLOY_MODE" == "local" ]; then
-    python3 deploy/import-to-cyroid.py --local
+    python3 deploy/import-to-cyroid.py --local --templates-only
 else
-    python3 deploy/import-to-cyroid.py
+    python3 deploy/import-to-cyroid.py --templates-only
 fi
+
+# Create ranges for each student
+log "Creating $NUM_STUDENTS student environment(s)..."
+for i in $(seq 1 $NUM_STUDENTS); do
+    if [ "$NUM_STUDENTS" -eq 1 ]; then
+        RANGE_NAME="Red Team Training Lab"
+    else
+        RANGE_NAME="Red Team Lab - Student $i"
+    fi
+
+    # Each student gets a different subnet (172.16.x for student 1, 172.17.x for student 2, etc.)
+    SUBNET_OFFSET=$((i - 1))
+
+    echo ""
+    log "Creating range: $RANGE_NAME (subnet: 172.$((16 + SUBNET_OFFSET)).x.x)"
+    if [ "$DEPLOY_MODE" == "local" ]; then
+        python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET 2>&1 | grep -E "^\s*(Created|===)" || true
+    else
+        python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET 2>&1 | grep -E "^\s*(Created|===)" || true
+    fi
+done
 
 # ----------------------------
 # Done!
@@ -236,6 +284,9 @@ echo -e "${GREEN}   Setup Complete!${NC}"
 echo "=============================================="
 echo ""
 
+echo "Created $NUM_STUDENTS student environment(s)"
+echo ""
+
 if [ "$DEPLOY_MODE" == "local" ]; then
     echo "CYROID UI:     http://localhost"
     echo "Admin User:    ${ADMIN_USER}"
@@ -244,22 +295,23 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     echo "Next Steps:"
     echo "  1. Open http://localhost in your browser"
     echo "  2. Login with credentials above"
-    echo "  3. Go to Ranges -> Red Team Training Lab"
+    echo "  3. Go to Ranges and select a student lab"
     echo "  4. Click 'Deploy' to start the environment"
     echo ""
-    echo "To create more student environments:"
+    echo "To add more student environments later:"
+    echo "  export CYROID_API_URL=http://localhost/api/v1"
     echo "  export CYROID_TOKEN=${TOKEN}"
-    echo "  python3 scenarios/red-team-lab/deploy/import-to-cyroid.py --local --range-name 'Student 2'"
+    echo "  python3 scenarios/red-team-lab/deploy/import-to-cyroid.py --local --range-name 'Student N' --subnet-offset N"
 else
     echo "Remote CYROID: ${API_URL}"
     echo ""
     echo "Next Steps:"
     echo "  1. Open your CYROID instance in a browser"
     echo "  2. Login with your credentials"
-    echo "  3. Go to Ranges -> Red Team Training Lab"
+    echo "  3. Go to Ranges and select a student lab"
     echo "  4. Click 'Deploy' to start the environment"
     echo ""
-    echo "To create more student environments:"
+    echo "To add more student environments later:"
     echo "  export CYROID_API_URL=${API_URL}"
     echo "  export CYROID_TOKEN=${TOKEN}"
     echo "  python3 scenarios/red-team-lab/deploy/import-to-cyroid.py --range-name 'Student 2'"

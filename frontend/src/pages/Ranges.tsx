@@ -55,6 +55,15 @@ export default function Ranges() {
     }
   }
 
+  const handleDeploy = async (range: Range) => {
+    try {
+      await rangesApi.deploy(range.id)
+      fetchRanges()
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to deploy range')
+    }
+  }
+
   const handleStart = async (range: Range) => {
     try {
       await rangesApi.start(range.id)
@@ -168,7 +177,15 @@ export default function Ranges() {
                     </div>
                   </Link>
                   <div className="ml-4 flex items-center space-x-2">
-                    {range.status === 'stopped' || range.status === 'draft' ? (
+                    {range.status === 'draft' ? (
+                      <button
+                        onClick={() => handleDeploy(range)}
+                        className="p-2 text-gray-400 hover:text-green-600"
+                        title="Deploy"
+                      >
+                        <Play className="h-5 w-5" />
+                      </button>
+                    ) : range.status === 'stopped' ? (
                       <button
                         onClick={() => handleStart(range)}
                         className="p-2 text-gray-400 hover:text-green-600"

@@ -45,12 +45,13 @@ def get_templates(local=False, registry="ghcr.io/your-org"):
             "description": "Kali Linux with pre-installed penetration testing tools",
             "os_type": "linux",
             "os_variant": "Kali Linux",
-            "vm_type": "linux_vm",
-            "linux_distro": "kali",
+            "vm_type": "container",
+            "base_image": "kalilinux/kali-rolling:latest",
             "default_cpu": 4,
             "default_ram_mb": 4096,
             "default_disk_gb": 60,
-            "tags": ["red-team", "attacker", "kali"]
+            "tags": ["red-team", "attacker", "kali"],
+            "config_script": "apt-get update && apt-get install -y kali-linux-headless"
         },
         {
             "name": "Red Team - WordPress Target",
@@ -110,8 +111,8 @@ def get_templates(local=False, registry="ghcr.io/your-org"):
             "vm_type": "container",
             "base_image": "alpine:3.19",
             "default_cpu": 1,
-            "default_ram_mb": 256,
-            "default_disk_gb": 1,
+            "default_ram_mb": 512,
+            "default_disk_gb": 10,
             "tags": ["red-team", "attacker", "redirector"],
             "config_script": "apk add --no-cache socat iptables && echo 1 > /proc/sys/net/ipv4/ip_forward"
         }
@@ -120,25 +121,33 @@ def get_templates(local=False, registry="ghcr.io/your-org"):
 # Default templates for backward compatibility
 TEMPLATES = get_templates(local=False)
 
-# Range blueprint (networks + VMs)
-RANGE_BLUEPRINT = {
-    "name": "Red Team Training Lab",
-    "description": "Attack training environment: SQLi, SSH brute force, BeEF exploitation, AD attack",
-    "networks": [
-        {"name": "internet", "subnet": "172.16.0.0/24", "gateway": "172.16.0.1", "internal": False},
-        {"name": "dmz", "subnet": "172.16.1.0/24", "gateway": "172.16.1.1", "internal": True},
-        {"name": "internal", "subnet": "172.16.2.0/24", "gateway": "172.16.2.1", "internal": True}
-    ],
-    "vms": [
-        {"template": "Red Team - Kali Attack Box", "hostname": "kali", "network": "internet", "ip": "172.16.0.10"},
-        {"template": "Red Team - Redirector", "hostname": "redir1", "network": "internet", "ip": "172.16.0.20"},
-        {"template": "Red Team - Redirector", "hostname": "redir2", "network": "internet", "ip": "172.16.0.21"},
-        {"template": "Red Team - WordPress Target", "hostname": "webserver", "network": "dmz", "ip": "172.16.1.10"},
-        {"template": "Red Team - Windows DC", "hostname": "WIN-DC01", "network": "internal", "ip": "172.16.2.10"},
-        {"template": "Red Team - File Server", "hostname": "fileserver", "network": "internal", "ip": "172.16.2.20"},
-        {"template": "Red Team - Victim Workstation", "hostname": "ws01", "network": "internal", "ip": "172.16.2.30"}
-    ]
-}
+def get_range_blueprint(subnet_offset: int = 0):
+    """
+    Get range blueprint with subnet offset for multiple student deployments.
+    subnet_offset: Adds to second octet (e.g., 0 -> 172.16.x.x, 1 -> 172.17.x.x)
+    """
+    base = 16 + subnet_offset
+    return {
+        "name": "Red Team Training Lab",
+        "description": "Attack training environment: SQLi, SSH brute force, BeEF exploitation, AD attack",
+        "networks": [
+            {"name": "internet", "subnet": f"172.{base}.0.0/24", "gateway": f"172.{base}.0.1", "internal": False},
+            {"name": "dmz", "subnet": f"172.{base}.1.0/24", "gateway": f"172.{base}.1.1", "internal": True},
+            {"name": "internal", "subnet": f"172.{base}.2.0/24", "gateway": f"172.{base}.2.1", "internal": True}
+        ],
+        "vms": [
+            {"template": "Red Team - Kali Attack Box", "hostname": "kali", "network": "internet", "ip": f"172.{base}.0.10"},
+            {"template": "Red Team - Redirector", "hostname": "redir1", "network": "internet", "ip": f"172.{base}.0.20"},
+            {"template": "Red Team - Redirector", "hostname": "redir2", "network": "internet", "ip": f"172.{base}.0.21"},
+            {"template": "Red Team - WordPress Target", "hostname": "webserver", "network": "dmz", "ip": f"172.{base}.1.10"},
+            {"template": "Red Team - Windows DC", "hostname": "WIN-DC01", "network": "internal", "ip": f"172.{base}.2.10"},
+            {"template": "Red Team - File Server", "hostname": "fileserver", "network": "internal", "ip": f"172.{base}.2.20"},
+            {"template": "Red Team - Victim Workstation", "hostname": "ws01", "network": "internal", "ip": f"172.{base}.2.30"}
+        ]
+    }
+
+# Default blueprint for backward compatibility
+RANGE_BLUEPRINT = get_range_blueprint(0)
 
 
 class CyroidImporter:
@@ -199,52 +208,71 @@ class CyroidImporter:
 
     def create_network(self, range_id: str, network: dict) -> dict:
         """Create a network in a range."""
+        network_data = {
+            "range_id": range_id,
+            "name": network["name"],
+            "subnet": network["subnet"],
+            "gateway": network["gateway"],
+            "isolation_level": "open" if not network.get("internal", True) else "controlled"
+        }
         resp = requests.post(
-            f"{self.api_url}/ranges/{range_id}/networks",
+            f"{self.api_url}/networks",
             headers=self.headers,
-            json=network
+            json=network_data
         )
         if resp.status_code in (200, 201):
             return resp.json()
+        else:
+            print(f"    Failed to create network: {resp.status_code} - {resp.text}")
         return None
 
     def create_vm(self, range_id: str, vm: dict) -> dict:
         """Create a VM in a range."""
+        vm_data = {
+            "range_id": range_id,
+            **vm
+        }
         resp = requests.post(
-            f"{self.api_url}/ranges/{range_id}/vms",
+            f"{self.api_url}/vms",
             headers=self.headers,
-            json=vm
+            json=vm_data
         )
         if resp.status_code in (200, 201):
             return resp.json()
+        else:
+            print(f"    Failed to create VM: {resp.status_code} - {resp.text}")
         return None
 
-    def import_templates(self, templates: list) -> dict:
-        """Import all Red Team Lab templates."""
+    def import_templates(self, templates: list) -> tuple:
+        """Import all Red Team Lab templates. Returns (id_map, details_map)."""
         print("\n=== Importing Templates ===")
         existing = self.get_existing_templates()
-        template_map = {}
+        template_map = {}  # name -> id
+        template_details = {}  # name -> full template dict
 
         for template in templates:
             name = template['name']
             if name in existing:
                 print(f"  [SKIP] {name} (already exists)")
                 template_map[name] = existing[name]['id']
+                template_details[name] = existing[name]
             else:
                 print(f"  [CREATE] {name}")
                 result = self.create_template(template)
                 if result:
                     template_map[name] = result['id']
+                    template_details[name] = result
                     print(f"    Created: {result['id']}")
 
-        return template_map
+        return template_map, template_details
 
-    def import_range(self, template_map: dict, range_name: str = None) -> str:
+    def import_range(self, template_map: dict, template_details: dict, range_name: str = None, subnet_offset: int = 0) -> str:
         """Import the range blueprint."""
         print("\n=== Creating Range ===")
 
-        name = range_name or RANGE_BLUEPRINT['name']
-        description = RANGE_BLUEPRINT['description']
+        blueprint = get_range_blueprint(subnet_offset)
+        name = range_name or blueprint['name']
+        description = blueprint['description']
 
         range_obj = self.create_range(name, description)
         if not range_obj:
@@ -257,7 +285,7 @@ class CyroidImporter:
         # Create networks
         print("\n=== Creating Networks ===")
         network_map = {}
-        for net in RANGE_BLUEPRINT['networks']:
+        for net in blueprint['networks']:
             print(f"  [CREATE] {net['name']} ({net['subnet']})")
             result = self.create_network(range_id, net)
             if result:
@@ -265,20 +293,28 @@ class CyroidImporter:
 
         # Create VMs
         print("\n=== Creating VMs ===")
-        for vm in RANGE_BLUEPRINT['vms']:
+        for vm in blueprint['vms']:
             template_name = vm['template']
             template_id = template_map.get(template_name)
+            template = template_details.get(template_name, {})
             network_id = network_map.get(vm['network'])
 
             if not template_id:
                 print(f"  [SKIP] {vm['hostname']} - template not found: {template_name}")
                 continue
 
+            if not network_id:
+                print(f"  [SKIP] {vm['hostname']} - network not found: {vm['network']}")
+                continue
+
             vm_data = {
                 "hostname": vm['hostname'],
                 "template_id": template_id,
                 "network_id": network_id,
-                "ip_address": vm['ip']
+                "ip_address": vm['ip'],
+                "cpu": template.get('default_cpu', 2),
+                "ram_mb": template.get('default_ram_mb', 2048),
+                "disk_gb": template.get('default_disk_gb', 20)
             }
 
             print(f"  [CREATE] {vm['hostname']} ({vm['ip']})")
@@ -295,6 +331,7 @@ def main():
     parser.add_argument("--templates-only", action="store_true", help="Only import templates, don't create range")
     parser.add_argument("--local", action="store_true", help="Use local Docker images (no registry)")
     parser.add_argument("--registry", default="ghcr.io/your-org", help="Container registry (ignored if --local)")
+    parser.add_argument("--subnet-offset", type=int, default=0, help="Subnet offset for multiple ranges (0=172.16.x, 1=172.17.x, etc)")
     parser.add_argument("--export-json", help="Export templates/range as JSON file instead of importing")
 
     args = parser.parse_args()
@@ -329,11 +366,11 @@ def main():
         sys.exit(1)
 
     # Import templates
-    template_map = importer.import_templates(templates)
+    template_map, template_details = importer.import_templates(templates)
 
     # Create range (unless templates-only)
     if not args.templates_only:
-        range_id = importer.import_range(template_map, args.range_name)
+        range_id = importer.import_range(template_map, template_details, args.range_name, args.subnet_offset)
         if range_id:
             print(f"\n=== Import Complete ===")
             print(f"Range ID: {range_id}")
