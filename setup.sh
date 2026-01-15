@@ -1,6 +1,6 @@
 #!/bin/bash
 # Red Team Training Lab - One-Click Setup
-# Sets up CYROID + imports the attack training lab
+# Clones and sets up CYROID separately, then imports lab scenarios
 
 set -e
 
@@ -18,6 +18,11 @@ log() { echo -e "${GREEN}[+]${NC} $1"; }
 warn() { echo -e "${YELLOW}[!]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 prompt() { echo -e "${CYAN}[?]${NC} $1"; }
+
+# CYROID repo and version
+CYROID_REPO="https://github.com/JongoDB/CYROID.git"
+CYROID_VERSION="v0.1.0"
+CYROID_DIR="${CYROID_DIR:-$SCRIPT_DIR/../cyroid}"
 
 # Default credentials (can be overridden via env vars)
 ADMIN_USER="${ADMIN_USER:-admin}"
@@ -110,6 +115,11 @@ if ! python3 -c "import requests" &> /dev/null; then
     pip3 install requests --quiet
 fi
 
+# Git (needed to clone CYROID)
+if ! command -v git &> /dev/null; then
+    error "Git not installed. Install with: sudo apt install git"
+fi
+
 if [ "$DEPLOY_MODE" == "local" ]; then
     # Docker Compose v2 (only for local)
     if ! docker compose version &> /dev/null; then
@@ -133,7 +143,198 @@ log "Prerequisites OK"
 if [ "$DEPLOY_MODE" == "local" ]; then
 
     # ----------------------------
-    # Step 2: Create Data Directories
+    # Step 2: Clone/Update CYROID
+    # ----------------------------
+    log "Setting up CYROID platform..."
+
+    if [ -d "$CYROID_DIR" ]; then
+        log "CYROID directory exists at $CYROID_DIR"
+        cd "$CYROID_DIR"
+
+        # Check if it's a git repo
+        if [ -d ".git" ]; then
+            log "Updating CYROID..."
+            git fetch origin --tags 2>/dev/null || true
+        fi
+    else
+        log "Cloning CYROID from $CYROID_REPO..."
+        git clone "$CYROID_REPO" "$CYROID_DIR"
+        cd "$CYROID_DIR"
+    fi
+
+    # Checkout specific version
+    log "Checking out CYROID $CYROID_VERSION..."
+    git checkout "$CYROID_VERSION" 2>/dev/null || {
+        warn "Version $CYROID_VERSION not found, using latest"
+    }
+
+    # ----------------------------
+    # Step 3: Apply VNC routing fix (until PR is merged)
+    # ----------------------------
+    log "Applying VNC routing fix..."
+
+    # Check if fix is already applied
+    if ! grep -q "traefik.enable" backend/cyroid/api/ranges.py 2>/dev/null; then
+        # Apply the fix using patch or sed
+        cat > /tmp/vnc-fix.patch << 'PATCHEOF'
+--- a/backend/cyroid/api/ranges.py
++++ b/backend/cyroid/api/ranges.py
+@@ -182,11 +182,58 @@ def deploy_range(range_id: UUID, db: DBSession, current_user: CurrentUser):
+                 if not network or not network.docker_network_id:
+                     logger.warning(f"Skipping VM {vm.id}: network not provisioned")
+                     continue
+
++                vm_id_short = str(vm.id)[:8]
+                 labels = {
+                     "cyroid.range_id": str(range_id),
+                     "cyroid.vm_id": str(vm.id),
+                     "cyroid.hostname": vm.hostname,
+                 }
+
++                # Add traefik labels for VNC web console routing
++                display_type = vm.display_type or "desktop"
++                if display_type == "desktop":
++                    base_image = template.base_image or ""
++                    is_linuxserver = "linuxserver/" in base_image or "lscr.io/linuxserver" in base_image
++                    is_kasmweb = "kasmweb/" in base_image
++
++                    if base_image.startswith("iso:") or template.os_type == "windows":
++                        vnc_port = "8006"
++                        vnc_scheme = "http"
++                        needs_auth = False
++                    elif is_linuxserver:
++                        vnc_port = "3000"
++                        vnc_scheme = "http"
++                        needs_auth = False
++                    elif is_kasmweb:
++                        vnc_port = "6901"
++                        vnc_scheme = "https"
++                        needs_auth = True
++                    else:
++                        vnc_port = "6901"
++                        vnc_scheme = "https"
++                        needs_auth = False
++
++                    router_name = f"vnc-{vm_id_short}"
++                    middlewares = [f"vnc-strip-{vm_id_short}"]
++
++                    labels.update({
++                        "traefik.enable": "true",
++                        "traefik.docker.network": "traefik-routing",
++                        f"traefik.http.services.{router_name}.loadbalancer.server.port": vnc_port,
++                        f"traefik.http.services.{router_name}.loadbalancer.server.scheme": vnc_scheme,
++                        f"traefik.http.routers.{router_name}.rule": f"PathPrefix(`/vnc/{vm.id}`)",
++                        f"traefik.http.routers.{router_name}.entrypoints": "web",
++                        f"traefik.http.routers.{router_name}.service": router_name,
++                        f"traefik.http.middlewares.vnc-strip-{vm_id_short}.stripprefix.prefixes": f"/vnc/{vm.id}",
++                    })
++
++                    if vnc_scheme == "https":
++                        labels[f"traefik.http.services.{router_name}.loadbalancer.serverstransport"] = "vnc-insecure@file"
++                        if not needs_auth:
++                            middlewares.append("vnc-headers")
++                            labels[f"traefik.http.middlewares.vnc-headers.headers.customrequestheaders.Authorization"] = "Basic a2FzbV91c2VyOnBhc3N3b3Jk"
++
++                    labels[f"traefik.http.routers.{router_name}.middlewares"] = ",".join(middlewares)
++
+                 if template.os_type == "windows":
+PATCHEOF
+
+        # Try to apply patch, fall back to manual fix if it fails
+        if ! patch -p1 < /tmp/vnc-fix.patch 2>/dev/null; then
+            warn "Patch failed, applying fix manually..."
+            # The fix will be applied via Python script instead
+            python3 << 'PYEOF'
+import re
+
+with open('backend/cyroid/api/ranges.py', 'r') as f:
+    content = f.read()
+
+# Check if already fixed
+if 'traefik.enable' in content:
+    print("Fix already applied")
+    exit(0)
+
+old_code = '''                labels = {
+                    "cyroid.range_id": str(range_id),
+                    "cyroid.vm_id": str(vm.id),
+                    "cyroid.hostname": vm.hostname,
+                }
+
+                if template.os_type == "windows":'''
+
+new_code = '''                vm_id_short = str(vm.id)[:8]
+                labels = {
+                    "cyroid.range_id": str(range_id),
+                    "cyroid.vm_id": str(vm.id),
+                    "cyroid.hostname": vm.hostname,
+                }
+
+                # Add traefik labels for VNC web console routing
+                display_type = vm.display_type or "desktop"
+                if display_type == "desktop":
+                    base_image = template.base_image or ""
+                    is_linuxserver = "linuxserver/" in base_image or "lscr.io/linuxserver" in base_image
+                    is_kasmweb = "kasmweb/" in base_image
+
+                    if base_image.startswith("iso:") or template.os_type == "windows":
+                        vnc_port = "8006"
+                        vnc_scheme = "http"
+                        needs_auth = False
+                    elif is_linuxserver:
+                        vnc_port = "3000"
+                        vnc_scheme = "http"
+                        needs_auth = False
+                    elif is_kasmweb:
+                        vnc_port = "6901"
+                        vnc_scheme = "https"
+                        needs_auth = True
+                    else:
+                        vnc_port = "6901"
+                        vnc_scheme = "https"
+                        needs_auth = False
+
+                    router_name = f"vnc-{vm_id_short}"
+                    middlewares = [f"vnc-strip-{vm_id_short}"]
+
+                    labels.update({
+                        "traefik.enable": "true",
+                        "traefik.docker.network": "traefik-routing",
+                        f"traefik.http.services.{router_name}.loadbalancer.server.port": vnc_port,
+                        f"traefik.http.services.{router_name}.loadbalancer.server.scheme": vnc_scheme,
+                        f"traefik.http.routers.{router_name}.rule": f"PathPrefix(`/vnc/{vm.id}`)",
+                        f"traefik.http.routers.{router_name}.entrypoints": "web",
+                        f"traefik.http.routers.{router_name}.service": router_name,
+                        f"traefik.http.middlewares.vnc-strip-{vm_id_short}.stripprefix.prefixes": f"/vnc/{vm.id}",
+                    })
+
+                    if vnc_scheme == "https":
+                        labels[f"traefik.http.services.{router_name}.loadbalancer.serverstransport"] = "vnc-insecure@file"
+                        if not needs_auth:
+                            middlewares.append("vnc-headers")
+                            labels[f"traefik.http.middlewares.vnc-headers.headers.customrequestheaders.Authorization"] = "Basic a2FzbV91c2VyOnBhc3N3b3Jk"
+
+                    labels[f"traefik.http.routers.{router_name}.middlewares"] = ",".join(middlewares)
+
+                if template.os_type == "windows":'''
+
+if old_code in content:
+    content = content.replace(old_code, new_code)
+    with open('backend/cyroid/api/ranges.py', 'w') as f:
+        f.write(content)
+    print("Fix applied successfully")
+else:
+    print("Could not find code to patch")
+    exit(1)
+PYEOF
+        fi
+        rm -f /tmp/vnc-fix.patch
+    else
+        log "VNC routing fix already applied"
+    fi
+
+    # ----------------------------
+    # Step 4: Create Data Directories
     # ----------------------------
     log "Creating data directories..."
 
@@ -141,19 +342,26 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     sudo chown -R $USER:$USER /data/cyroid
 
     # ----------------------------
-    # Step 3: Setup Environment
+    # Step 5: Setup Environment
     # ----------------------------
     log "Setting up environment..."
 
     if [ ! -f .env ]; then
-        cp .env.example .env
-        log "Created .env from template"
+        cp .env.example .env 2>/dev/null || {
+            # Create minimal .env if example doesn't exist
+            cat > .env << 'ENVEOF'
+# CYROID Environment Configuration
+DATABASE_URL=postgresql://cyroid:cyroid@db:5432/cyroid
+REDIS_URL=redis://redis:6379/0
+ENVEOF
+        }
+        log "Created .env"
     else
         log ".env already exists, keeping existing config"
     fi
 
     # ----------------------------
-    # Step 4: Start CYROID
+    # Step 6: Start CYROID
     # ----------------------------
     log "Starting CYROID services..."
 
@@ -185,7 +393,7 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     API_URL="http://localhost/api/v1"
 
     # ----------------------------
-    # Step 5: Create Admin User
+    # Step 7: Create Admin User
     # ----------------------------
     log "Creating admin user..."
 
@@ -206,10 +414,13 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     docker compose exec -T db psql -U cyroid -d cyroid -c \
         "UPDATE users SET is_approved = true, role = 'ADMIN' WHERE username = '${ADMIN_USER}';" > /dev/null 2>&1
 
+    # Return to script directory
+    cd "$SCRIPT_DIR"
+
 fi  # End local setup
 
 # ----------------------------
-# Step 6: Get Auth Token
+# Step 8: Get Auth Token
 # ----------------------------
 log "Authenticating..."
 
@@ -226,7 +437,7 @@ fi
 log "Authenticated successfully"
 
 # ----------------------------
-# Step 7: Build Lab Images
+# Step 9: Build Lab Images
 # ----------------------------
 cd "$SCRIPT_DIR/scenarios/red-team-lab"
 
@@ -244,7 +455,7 @@ else
 fi
 
 # ----------------------------
-# Step 8: Import to CYROID
+# Step 10: Import to CYROID
 # ----------------------------
 log "Importing Red Team Lab to CYROID..."
 
@@ -294,9 +505,10 @@ echo "Created $NUM_STUDENTS student environment(s)"
 echo ""
 
 if [ "$DEPLOY_MODE" == "local" ]; then
-    echo "CYROID UI:     http://localhost"
-    echo "Admin User:    ${ADMIN_USER}"
-    echo "Admin Pass:    ${ADMIN_PASS}"
+    echo "CYROID Platform: $CYROID_DIR"
+    echo "CYROID UI:       http://localhost"
+    echo "Admin User:      ${ADMIN_USER}"
+    echo "Admin Pass:      ${ADMIN_PASS}"
     echo ""
     echo "Next Steps:"
     echo "  1. Open http://localhost in your browser"
