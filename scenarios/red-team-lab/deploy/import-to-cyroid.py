@@ -25,83 +25,100 @@ SCRIPT_DIR = Path(__file__).parent
 SCENARIOS_DIR = SCRIPT_DIR.parent
 
 # Template definitions for the Red Team Lab
-TEMPLATES = [
-    {
-        "name": "Red Team - Kali Attack Box",
-        "description": "Kali Linux with pre-installed penetration testing tools",
-        "os_type": "linux",
-        "os_variant": "Kali Linux",
-        "vm_type": "linux_vm",
-        "linux_distro": "kali",
-        "default_cpu": 4,
-        "default_ram_mb": 4096,
-        "default_disk_gb": 60,
-        "tags": ["red-team", "attacker", "kali"]
-    },
-    {
-        "name": "Red Team - WordPress Target",
-        "description": "WordPress with vulnerable Acme Employee Portal plugin (SQLi/XSS)",
-        "os_type": "linux",
-        "os_variant": "Ubuntu 22.04",
-        "vm_type": "container",
-        "base_image": "ghcr.io/your-org/redteam-lab-wordpress:latest",
-        "default_cpu": 2,
-        "default_ram_mb": 2048,
-        "default_disk_gb": 20,
-        "tags": ["red-team", "victim", "sqli", "xss", "wordpress"],
-        "config_script": "# WordPress auto-configures on startup"
-    },
-    {
-        "name": "Red Team - File Server",
-        "description": "Samba file server with sensitive business data",
-        "os_type": "linux",
-        "os_variant": "Ubuntu 22.04",
-        "vm_type": "container",
-        "base_image": "ghcr.io/your-org/redteam-lab-fileserver:latest",
-        "default_cpu": 1,
-        "default_ram_mb": 1024,
-        "default_disk_gb": 10,
-        "tags": ["red-team", "victim", "samba", "exfil-target"]
-    },
-    {
-        "name": "Red Team - Victim Workstation",
-        "description": "Simulated employee workstation (BeEF hook target)",
-        "os_type": "linux",
-        "os_variant": "Ubuntu 22.04",
-        "vm_type": "container",
-        "base_image": "ghcr.io/your-org/redteam-lab-workstation:latest",
-        "default_cpu": 1,
-        "default_ram_mb": 1024,
-        "default_disk_gb": 10,
-        "tags": ["red-team", "victim", "workstation", "beef-target"]
-    },
-    {
-        "name": "Red Team - Windows DC",
-        "description": "Windows Server 2019 Domain Controller with misconfigurations",
-        "os_type": "windows",
-        "os_variant": "Windows Server 2019",
-        "vm_type": "windows_vm",
-        "base_image": "2019",
-        "default_cpu": 4,
-        "default_ram_mb": 4096,
-        "default_disk_gb": 80,
-        "tags": ["red-team", "victim", "windows", "dc", "ad"],
-        "config_script": "# See scenarios/red-team-lab/containers/windows-dc/oem/ for setup scripts"
-    },
-    {
-        "name": "Red Team - Redirector",
-        "description": "Lightweight Alpine redirector for C2 traffic",
-        "os_type": "linux",
-        "os_variant": "Alpine 3.19",
-        "vm_type": "container",
-        "base_image": "alpine:3.19",
-        "default_cpu": 1,
-        "default_ram_mb": 256,
-        "default_disk_gb": 1,
-        "tags": ["red-team", "attacker", "redirector"],
-        "config_script": "apk add --no-cache socat iptables && echo 1 > /proc/sys/net/ipv4/ip_forward"
-    }
-]
+# Use get_templates(local=True/False) to get appropriate image names
+
+def get_templates(local=False, registry="ghcr.io/your-org"):
+    """Get template definitions with appropriate image paths."""
+
+    if local:
+        wordpress_image = "redteam-lab-wordpress:latest"
+        fileserver_image = "redteam-lab-fileserver:latest"
+        workstation_image = "redteam-lab-workstation:latest"
+    else:
+        wordpress_image = f"{registry}/redteam-lab-wordpress:latest"
+        fileserver_image = f"{registry}/redteam-lab-fileserver:latest"
+        workstation_image = f"{registry}/redteam-lab-workstation:latest"
+
+    return [
+        {
+            "name": "Red Team - Kali Attack Box",
+            "description": "Kali Linux with pre-installed penetration testing tools",
+            "os_type": "linux",
+            "os_variant": "Kali Linux",
+            "vm_type": "linux_vm",
+            "linux_distro": "kali",
+            "default_cpu": 4,
+            "default_ram_mb": 4096,
+            "default_disk_gb": 60,
+            "tags": ["red-team", "attacker", "kali"]
+        },
+        {
+            "name": "Red Team - WordPress Target",
+            "description": "WordPress with vulnerable Acme Employee Portal plugin (SQLi/XSS)",
+            "os_type": "linux",
+            "os_variant": "Ubuntu 22.04",
+            "vm_type": "container",
+            "base_image": wordpress_image,
+            "default_cpu": 2,
+            "default_ram_mb": 2048,
+            "default_disk_gb": 20,
+            "tags": ["red-team", "victim", "sqli", "xss", "wordpress"],
+            "config_script": "# WordPress auto-configures on startup"
+        },
+        {
+            "name": "Red Team - File Server",
+            "description": "Samba file server with sensitive business data",
+            "os_type": "linux",
+            "os_variant": "Ubuntu 22.04",
+            "vm_type": "container",
+            "base_image": fileserver_image,
+            "default_cpu": 1,
+            "default_ram_mb": 1024,
+            "default_disk_gb": 10,
+            "tags": ["red-team", "victim", "samba", "exfil-target"]
+        },
+        {
+            "name": "Red Team - Victim Workstation",
+            "description": "Simulated employee workstation (BeEF hook target)",
+            "os_type": "linux",
+            "os_variant": "Ubuntu 22.04",
+            "vm_type": "container",
+            "base_image": workstation_image,
+            "default_cpu": 1,
+            "default_ram_mb": 1024,
+            "default_disk_gb": 10,
+            "tags": ["red-team", "victim", "workstation", "beef-target"]
+        },
+        {
+            "name": "Red Team - Windows DC",
+            "description": "Windows Server 2019 Domain Controller with misconfigurations",
+            "os_type": "windows",
+            "os_variant": "Windows Server 2019",
+            "vm_type": "windows_vm",
+            "base_image": "2019",
+            "default_cpu": 4,
+            "default_ram_mb": 4096,
+            "default_disk_gb": 80,
+            "tags": ["red-team", "victim", "windows", "dc", "ad"],
+            "config_script": "# See scenarios/red-team-lab/containers/windows-dc/oem/ for setup scripts"
+        },
+        {
+            "name": "Red Team - Redirector",
+            "description": "Lightweight Alpine redirector for C2 traffic",
+            "os_type": "linux",
+            "os_variant": "Alpine 3.19",
+            "vm_type": "container",
+            "base_image": "alpine:3.19",
+            "default_cpu": 1,
+            "default_ram_mb": 256,
+            "default_disk_gb": 1,
+            "tags": ["red-team", "attacker", "redirector"],
+            "config_script": "apk add --no-cache socat iptables && echo 1 > /proc/sys/net/ipv4/ip_forward"
+        }
+    ]
+
+# Default templates for backward compatibility
+TEMPLATES = get_templates(local=False)
 
 # Range blueprint (networks + VMs)
 RANGE_BLUEPRINT = {
@@ -202,13 +219,13 @@ class CyroidImporter:
             return resp.json()
         return None
 
-    def import_templates(self) -> dict:
+    def import_templates(self, templates: list) -> dict:
         """Import all Red Team Lab templates."""
         print("\n=== Importing Templates ===")
         existing = self.get_existing_templates()
         template_map = {}
 
-        for template in TEMPLATES:
+        for template in templates:
             name = template['name']
             if name in existing:
                 print(f"  [SKIP] {name} (already exists)")
@@ -276,14 +293,19 @@ def main():
     parser.add_argument("--token", default=os.environ.get("CYROID_TOKEN"))
     parser.add_argument("--range-name", help="Custom name for the range")
     parser.add_argument("--templates-only", action="store_true", help="Only import templates, don't create range")
+    parser.add_argument("--local", action="store_true", help="Use local Docker images (no registry)")
+    parser.add_argument("--registry", default="ghcr.io/your-org", help="Container registry (ignored if --local)")
     parser.add_argument("--export-json", help="Export templates/range as JSON file instead of importing")
 
     args = parser.parse_args()
 
+    # Get templates with appropriate image paths
+    templates = get_templates(local=args.local, registry=args.registry)
+
     # Export mode
     if args.export_json:
         export_data = {
-            "templates": TEMPLATES,
+            "templates": templates,
             "range": RANGE_BLUEPRINT
         }
         with open(args.export_json, 'w') as f:
@@ -301,11 +323,13 @@ def main():
     importer = CyroidImporter(args.api_url, args.token)
 
     print(f"CYROID API: {args.api_url}")
+    if args.local:
+        print("Using LOCAL Docker images (no registry)")
     if not importer.check_connection():
         sys.exit(1)
 
     # Import templates
-    template_map = importer.import_templates()
+    template_map = importer.import_templates(templates)
 
     # Create range (unless templates-only)
     if not args.templates_only:
