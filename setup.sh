@@ -21,8 +21,38 @@ prompt() { echo -e "${CYAN}[?]${NC} $1"; }
 
 # CYROID repo and version
 CYROID_REPO="https://github.com/JongoDB/CYROID.git"
-CYROID_VERSION="v0.1.1"
 CYROID_DIR="${CYROID_DIR:-$SCRIPT_DIR/../cyroid}"
+
+# Function to get latest release tag from GitHub
+get_latest_cyroid_version() {
+    local latest=""
+
+    # Try GitHub tags API first
+    local api_response=$(curl -sf "https://api.github.com/repos/JongoDB/CYROID/tags" 2>/dev/null)
+    if [ -n "$api_response" ]; then
+        latest=$(echo "$api_response" | python3 -c "import sys,json; tags=json.load(sys.stdin); print(tags[0]['name'] if tags else '')" 2>/dev/null)
+    fi
+
+    if [ -n "$latest" ]; then
+        echo "$latest"
+        return
+    fi
+
+    # Fallback: use git ls-remote to get latest tag (sorted by version)
+    latest=$(git ls-remote --tags --sort=-v:refname "$CYROID_REPO" 2>/dev/null | \
+        head -n1 | sed 's/.*refs\/tags\///' | sed 's/\^{}//')
+
+    if [ -n "$latest" ]; then
+        echo "$latest"
+        return
+    fi
+
+    # Final fallback
+    echo "main"
+}
+
+# Allow override via environment variable, otherwise fetch latest
+CYROID_VERSION="${CYROID_VERSION:-$(get_latest_cyroid_version)}"
 
 # Default credentials (can be overridden via env vars)
 ADMIN_USER="${ADMIN_USER:-admin}"
@@ -146,6 +176,7 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     # Step 2: Clone/Update CYROID
     # ----------------------------
     log "Setting up CYROID platform..."
+    log "Using CYROID version: $CYROID_VERSION"
 
     if [ -d "$CYROID_DIR" ]; then
         log "CYROID directory exists at $CYROID_DIR"
