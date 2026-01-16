@@ -6,8 +6,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINERS_DIR="$SCRIPT_DIR/../containers"
 
-# Default registry (change this to your registry)
-REGISTRY="${REGISTRY:-ghcr.io/your-org}"
+# Default: no registry prefix for local builds
+# Set REGISTRY env var or use -r flag for remote registry
+REGISTRY="${REGISTRY:-}"
 TAG="${TAG:-latest}"
 
 usage() {
@@ -22,35 +23,50 @@ Commands:
     all         Build and push
 
 Options:
-    -r, --registry REGISTRY    Container registry (default: $REGISTRY)
+    -r, --registry REGISTRY    Container registry (required for push)
     -t, --tag TAG              Image tag (default: $TAG)
     -h, --help                 Show this help
 
 Examples:
-    $0 build                                    # Build locally
+    $0 build                                    # Build locally (no registry prefix)
+    $0 -r docker.io/myuser build               # Build with registry prefix
     $0 -r docker.io/myuser push                # Push to Docker Hub
     $0 -r ghcr.io/myorg -t v1.0 all           # Build and push with tag
 EOF
     exit 1
 }
 
+# Helper to get full image name (with or without registry)
+get_image_name() {
+    local name="$1"
+    if [ -n "$REGISTRY" ]; then
+        echo "$REGISTRY/$name:$TAG"
+    else
+        echo "$name:$TAG"
+    fi
+}
+
 build_images() {
     echo "=== Building Red Team Lab Images ==="
-    echo "Registry: $REGISTRY"
+    if [ -n "$REGISTRY" ]; then
+        echo "Registry: $REGISTRY"
+    else
+        echo "Registry: (local, no prefix)"
+    fi
     echo "Tag: $TAG"
     echo ""
 
     # WordPress (SQLi target)
     echo "[1/3] Building WordPress image..."
-    docker build -t "$REGISTRY/redteam-lab-wordpress:$TAG" "$CONTAINERS_DIR/wordpress/"
+    docker build -t "$(get_image_name redteam-lab-wordpress)" "$CONTAINERS_DIR/wordpress/"
 
     # File Server
     echo "[2/3] Building File Server image..."
-    docker build -t "$REGISTRY/redteam-lab-fileserver:$TAG" "$CONTAINERS_DIR/fileserver/"
+    docker build -t "$(get_image_name redteam-lab-fileserver)" "$CONTAINERS_DIR/fileserver/"
 
     # Workstation (BeEF victim)
     echo "[3/3] Building Workstation image..."
-    docker build -t "$REGISTRY/redteam-lab-workstation:$TAG" "$CONTAINERS_DIR/workstation/"
+    docker build -t "$(get_image_name redteam-lab-workstation)" "$CONTAINERS_DIR/workstation/"
 
     echo ""
     echo "=== Build Complete ==="
@@ -58,14 +74,19 @@ build_images() {
 }
 
 push_images() {
+    if [ -z "$REGISTRY" ]; then
+        echo "ERROR: Registry is required for push. Use -r flag to specify."
+        exit 1
+    fi
+
     echo "=== Pushing Red Team Lab Images ==="
     echo "Registry: $REGISTRY"
     echo "Tag: $TAG"
     echo ""
 
-    docker push "$REGISTRY/redteam-lab-wordpress:$TAG"
-    docker push "$REGISTRY/redteam-lab-fileserver:$TAG"
-    docker push "$REGISTRY/redteam-lab-workstation:$TAG"
+    docker push "$(get_image_name redteam-lab-wordpress)"
+    docker push "$(get_image_name redteam-lab-fileserver)"
+    docker push "$(get_image_name redteam-lab-workstation)"
 
     echo ""
     echo "=== Push Complete ==="
