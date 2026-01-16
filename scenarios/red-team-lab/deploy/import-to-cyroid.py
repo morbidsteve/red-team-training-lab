@@ -27,19 +27,27 @@ SCENARIOS_DIR = SCRIPT_DIR.parent
 # Template definitions for the Red Team Lab
 # Use get_templates(local=True/False) to get appropriate image names
 
-def get_templates(local=False, registry="ghcr.io/your-org"):
-    """Get template definitions with appropriate image paths."""
+def get_templates(local=False, registry="ghcr.io/your-org", dc_type="windows"):
+    """Get template definitions with appropriate image paths.
+
+    Args:
+        local: If True, use local Docker image names without registry prefix
+        registry: Container registry for remote deployments
+        dc_type: "windows" for Windows DC (requires KVM) or "samba" for Samba AD DC (Linux-based)
+    """
 
     if local:
         wordpress_image = "redteam-lab-wordpress:latest"
         fileserver_image = "redteam-lab-fileserver:latest"
         workstation_image = "redteam-lab-workstation:latest"
+        samba_dc_image = "redteam-lab-samba-dc:latest"
     else:
         wordpress_image = f"{registry}/redteam-lab-wordpress:latest"
         fileserver_image = f"{registry}/redteam-lab-fileserver:latest"
         workstation_image = f"{registry}/redteam-lab-workstation:latest"
+        samba_dc_image = f"{registry}/redteam-lab-samba-dc:latest"
 
-    return [
+    templates = [
         {
             "name": "Red Team - Kali Attack Box",
             "description": "Kali Linux with KasmVNC desktop and penetration testing tools",
@@ -90,19 +98,6 @@ def get_templates(local=False, registry="ghcr.io/your-org"):
             "tags": ["red-team", "victim", "workstation", "beef-target"]
         },
         {
-            "name": "Red Team - Windows DC",
-            "description": "Windows Server 2019 Domain Controller with misconfigurations",
-            "os_type": "windows",
-            "os_variant": "Windows Server 2019",
-            "vm_type": "windows_vm",
-            "base_image": "2019",
-            "default_cpu": 4,
-            "default_ram_mb": 4096,
-            "default_disk_gb": 80,
-            "tags": ["red-team", "victim", "windows", "dc", "ad"],
-            "config_script": "# See scenarios/red-team-lab/containers/windows-dc/oem/ for setup scripts"
-        },
-        {
             "name": "Red Team - Redirector",
             "description": "Lightweight Alpine redirector for C2 traffic",
             "os_type": "linux",
@@ -117,15 +112,59 @@ def get_templates(local=False, registry="ghcr.io/your-org"):
         }
     ]
 
-# Default templates for backward compatibility
-TEMPLATES = get_templates(local=False)
+    # Add the appropriate DC template based on dc_type
+    if dc_type == "samba":
+        templates.append({
+            "name": "Red Team - Samba AD DC",
+            "description": "Samba 4 Active Directory DC with misconfigurations (Linux-based, no KVM required)",
+            "os_type": "linux",
+            "os_variant": "Ubuntu 22.04",
+            "vm_type": "container",
+            "base_image": samba_dc_image,
+            "default_cpu": 2,
+            "default_ram_mb": 2048,
+            "default_disk_gb": 20,
+            "tags": ["red-team", "victim", "samba", "dc", "ad"],
+            "config_script": "# Samba AD DC auto-provisions on first startup"
+        })
+    else:
+        templates.append({
+            "name": "Red Team - Windows DC",
+            "description": "Windows Server 2019 Domain Controller with misconfigurations",
+            "os_type": "windows",
+            "os_variant": "Windows Server 2019",
+            "vm_type": "windows_vm",
+            "base_image": "2019",
+            "default_cpu": 4,
+            "default_ram_mb": 4096,
+            "default_disk_gb": 80,
+            "tags": ["red-team", "victim", "windows", "dc", "ad"],
+            "config_script": "# See scenarios/red-team-lab/containers/windows-dc/oem/ for setup scripts"
+        })
 
-def get_range_blueprint(subnet_offset: int = 0):
+    return templates
+
+# Default templates for backward compatibility (Windows DC)
+TEMPLATES = get_templates(local=False, dc_type="windows")
+
+def get_range_blueprint(subnet_offset: int = 0, dc_type: str = "windows"):
     """
     Get range blueprint with subnet offset for multiple student deployments.
-    subnet_offset: Adds to second octet (e.g., 0 -> 172.16.x.x, 1 -> 172.17.x.x)
+
+    Args:
+        subnet_offset: Adds to second octet (e.g., 0 -> 172.16.x.x, 1 -> 172.17.x.x)
+        dc_type: "windows" for Windows DC or "samba" for Samba AD DC
     """
     base = 16 + subnet_offset
+
+    # Select DC template and hostname based on dc_type
+    if dc_type == "samba":
+        dc_template = "Red Team - Samba AD DC"
+        dc_hostname = "DC01"
+    else:
+        dc_template = "Red Team - Windows DC"
+        dc_hostname = "WIN-DC01"
+
     return {
         "name": "Red Team Training Lab",
         "description": "Attack training environment: SQLi, SSH brute force, BeEF exploitation, AD attack",
@@ -139,7 +178,7 @@ def get_range_blueprint(subnet_offset: int = 0):
             {"template": "Red Team - Redirector", "hostname": "redir1", "network": "internet", "ip": f"172.{base}.0.20"},
             {"template": "Red Team - Redirector", "hostname": "redir2", "network": "internet", "ip": f"172.{base}.0.21"},
             {"template": "Red Team - WordPress Target", "hostname": "webserver", "network": "dmz", "ip": f"172.{base}.1.10"},
-            {"template": "Red Team - Windows DC", "hostname": "WIN-DC01", "network": "internal", "ip": f"172.{base}.2.10"},
+            {"template": dc_template, "hostname": dc_hostname, "network": "internal", "ip": f"172.{base}.2.10"},
             {"template": "Red Team - File Server", "hostname": "fileserver", "network": "internal", "ip": f"172.{base}.2.20"},
             {"template": "Red Team - Victim Workstation", "hostname": "ws01", "network": "internal", "ip": f"172.{base}.2.30"}
         ]
@@ -265,11 +304,11 @@ class CyroidImporter:
 
         return template_map, template_details
 
-    def import_range(self, template_map: dict, template_details: dict, range_name: str = None, subnet_offset: int = 0) -> str:
+    def import_range(self, template_map: dict, template_details: dict, range_name: str = None, subnet_offset: int = 0, dc_type: str = "windows") -> str:
         """Import the range blueprint."""
         print("\n=== Creating Range ===")
 
-        blueprint = get_range_blueprint(subnet_offset)
+        blueprint = get_range_blueprint(subnet_offset, dc_type)
         name = range_name or blueprint['name']
         description = blueprint['description']
 
@@ -331,18 +370,21 @@ def main():
     parser.add_argument("--local", action="store_true", help="Use local Docker images (no registry)")
     parser.add_argument("--registry", default="ghcr.io/your-org", help="Container registry (ignored if --local)")
     parser.add_argument("--subnet-offset", type=int, default=0, help="Subnet offset for multiple ranges (0=172.16.x, 1=172.17.x, etc)")
+    parser.add_argument("--dc-type", default=os.environ.get("DC_TYPE", "windows"),
+                        choices=["windows", "samba"],
+                        help="Domain Controller type: 'windows' (requires KVM) or 'samba' (Linux-based, no KVM)")
     parser.add_argument("--export-json", help="Export templates/range as JSON file instead of importing")
 
     args = parser.parse_args()
 
-    # Get templates with appropriate image paths
-    templates = get_templates(local=args.local, registry=args.registry)
+    # Get templates with appropriate image paths and DC type
+    templates = get_templates(local=args.local, registry=args.registry, dc_type=args.dc_type)
 
     # Export mode
     if args.export_json:
         export_data = {
             "templates": templates,
-            "range": RANGE_BLUEPRINT
+            "range": get_range_blueprint(0, args.dc_type)
         }
         with open(args.export_json, 'w') as f:
             json.dump(export_data, f, indent=2)
@@ -361,6 +403,7 @@ def main():
     print(f"CYROID API: {args.api_url}")
     if args.local:
         print("Using LOCAL Docker images (no registry)")
+    print(f"DC Type: {args.dc_type}")
     if not importer.check_connection():
         sys.exit(1)
 
@@ -369,7 +412,7 @@ def main():
 
     # Create range (unless templates-only)
     if not args.templates_only:
-        range_id = importer.import_range(template_map, template_details, args.range_name, args.subnet_offset)
+        range_id = importer.import_range(template_map, template_details, args.range_name, args.subnet_offset, args.dc_type)
         if range_id:
             print(f"\n=== Import Complete ===")
             print(f"Range ID: {range_id}")

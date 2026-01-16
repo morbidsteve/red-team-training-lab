@@ -59,6 +59,11 @@ ADMIN_USER="${ADMIN_USER:-admin}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@example.com}"
 ADMIN_PASS="${ADMIN_PASS:-RedTeam2024}"
 
+# Domain Controller type: "samba" or "windows"
+# Auto-detected based on OS and KVM availability
+# Override with USE_SAMBA_DC=true to force Samba DC on Linux with KVM
+DC_TYPE=""
+
 echo ""
 echo "=============================================="
 echo "   Red Team Training Lab - Setup Script"
@@ -96,6 +101,15 @@ if [ "$DEPLOY_CHOICE" == "2" ]; then
     API_URL="$REMOTE_API_URL"
     ADMIN_USER="$REMOTE_USER"
     ADMIN_PASS="$REMOTE_PASS"
+
+    # For remote mode, detect DC type based on local OS (assumes remote CYROID matches)
+    OS_TYPE="$(uname -s)"
+    if [ "$OS_TYPE" == "Darwin" ] || [ "${USE_SAMBA_DC:-false}" == "true" ]; then
+        DC_TYPE="samba"
+    else
+        DC_TYPE="windows"
+    fi
+    export DC_TYPE
 else
     DEPLOY_MODE="local"
 fi
@@ -156,13 +170,37 @@ if [ "$DEPLOY_MODE" == "local" ]; then
         error "Docker Compose v2 not found. Install with: sudo apt install docker-compose-v2"
     fi
 
-    # KVM (optional but recommended for Windows VMs)
-    if [ -e /dev/kvm ]; then
-        log "KVM available - Windows VMs will use hardware acceleration"
+    # Detect OS and KVM availability to determine DC type
+    OS_TYPE="$(uname -s)"
+
+    if [ "$OS_TYPE" == "Darwin" ]; then
+        # macOS - always use Samba DC (no KVM support)
+        DC_TYPE="samba"
+        log "Detected macOS - using Samba AD DC (Windows DC requires KVM)"
+    elif [ "$OS_TYPE" == "Linux" ]; then
+        if [ -e /dev/kvm ]; then
+            # Linux with KVM available
+            if [ "${USE_SAMBA_DC:-false}" == "true" ]; then
+                DC_TYPE="samba"
+                log "USE_SAMBA_DC=true - using Samba AD DC"
+            else
+                DC_TYPE="windows"
+                log "KVM available - using Windows DC (set USE_SAMBA_DC=true for faster Samba alternative)"
+            fi
+        else
+            # Linux without KVM
+            DC_TYPE="samba"
+            warn "KVM not available - using Samba AD DC (Windows DC requires KVM for acceptable performance)"
+            warn "To enable KVM: sudo apt install qemu-kvm && sudo usermod -aG kvm \$USER"
+        fi
     else
-        warn "KVM not available - Windows VMs will be slow (software emulation)"
-        warn "To enable: sudo apt install qemu-kvm && sudo usermod -aG kvm \$USER"
+        # Unknown OS - default to Samba
+        DC_TYPE="samba"
+        warn "Unknown OS ($OS_TYPE) - using Samba AD DC"
     fi
+
+    export DC_TYPE
+    log "Domain Controller type: $DC_TYPE"
 fi
 
 log "Prerequisites OK"
@@ -497,9 +535,9 @@ cd "$SCRIPT_DIR/scenarios/red-team-lab"
 
 # First import templates only
 if [ "$DEPLOY_MODE" == "local" ]; then
-    python3 deploy/import-to-cyroid.py --local --templates-only
+    python3 deploy/import-to-cyroid.py --local --templates-only --dc-type "$DC_TYPE"
 else
-    python3 deploy/import-to-cyroid.py --templates-only
+    python3 deploy/import-to-cyroid.py --templates-only --dc-type "$DC_TYPE"
 fi
 
 # Create ranges for each student
@@ -517,9 +555,9 @@ for i in $(seq 1 $NUM_STUDENTS); do
     echo ""
     log "Creating range: $RANGE_NAME (subnet: 172.$((16 + SUBNET_OFFSET)).x.x)"
     if [ "$DEPLOY_MODE" == "local" ]; then
-        python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET
+        python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET --dc-type "$DC_TYPE"
     else
-        python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET
+        python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET --dc-type "$DC_TYPE"
     fi
 done
 

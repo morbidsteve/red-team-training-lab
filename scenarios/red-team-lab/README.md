@@ -2,6 +2,19 @@
 
 A complete attack training environment for CYROID. Students learn offensive security by executing a full attack chain against a simulated small business network.
 
+## Platform Support
+
+The lab runs on **both macOS and Linux**:
+
+| Platform | Domain Controller | Notes |
+|----------|------------------|-------|
+| **macOS** | Samba AD DC (automatic) | Full functionality, no KVM required |
+| **Linux with KVM** | Windows DC (default) | Most realistic, uses hardware acceleration |
+| **Linux with KVM** | Samba AD DC (optional) | Set `USE_SAMBA_DC=true` for faster setup |
+| **Linux without KVM** | Samba AD DC (automatic) | Falls back automatically |
+
+Both DC options support the same attack scenarios: DCSync, Pass-the-Hash, BloodHound enumeration, and credential reuse attacks.
+
 ## Attack Scenarios
 
 | Phase | Technique | Target | Outcome |
@@ -113,12 +126,19 @@ python import-to-cyroid.py
 - Auto-browses WordPress every 60 seconds
 - Triggers BeEF hooks when attacker injects XSS
 
-### Windows DC (`containers/windows-dc/`)
+### Domain Controller (Windows or Samba)
 
+**Windows DC** (`containers/windows-dc/`) - Used on Linux with KVM:
 - Windows Server 2019 setup scripts
 - Creates `acmewidgets.local` domain
 - **Misconfiguration**: `svc_backup` has DCSync rights
 - Weak, reused passwords
+
+**Samba AD DC** (`containers/samba-dc/`) - Used on macOS or Linux without KVM:
+- Ubuntu 22.04 with Samba 4 AD DC
+- Creates identical `acmewidgets.local` domain
+- Same users, passwords, and DCSync misconfiguration
+- Fully compatible with Impacket tools (secretsdump, psexec, etc.)
 
 ## Credentials
 
@@ -153,7 +173,8 @@ scenarios/red-team-lab/
 │   ├── wordpress/          # SQLi/XSS target
 │   ├── fileserver/         # Sensitive data
 │   ├── workstation/        # BeEF victim
-│   └── windows-dc/         # DC setup scripts
+│   ├── windows-dc/         # Windows DC setup (Linux+KVM)
+│   └── samba-dc/           # Samba AD DC (macOS/Linux)
 ├── plugins/
 │   └── acme-employee-portal/  # Vulnerable WP plugin
 └── deploy/
@@ -177,6 +198,20 @@ Edit `configs/credentials.yml` and update:
 2. Add template to `deploy/import-to-cyroid.py`
 3. Update `range-blueprint.yml`
 4. Rebuild and reimport
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_SAMBA_DC` | `false` | Set to `true` to use Samba AD DC on Linux (even with KVM) |
+| `DC_TYPE` | auto | Override DC type: `windows` or `samba` |
+| `NUM_STUDENTS` | 1 | Number of student environments to create |
+| `CYROID_VERSION` | latest | CYROID version to install |
+
+Example: Fast setup on Linux with Samba DC:
+```bash
+USE_SAMBA_DC=true ./setup.sh
+```
 
 ## For Instructors
 

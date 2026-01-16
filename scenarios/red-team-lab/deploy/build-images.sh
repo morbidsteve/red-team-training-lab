@@ -57,16 +57,20 @@ build_images() {
     echo ""
 
     # WordPress (SQLi target)
-    echo "[1/3] Building WordPress image..."
+    echo "[1/4] Building WordPress image..."
     docker build -t "$(get_image_name redteam-lab-wordpress)" "$CONTAINERS_DIR/wordpress/"
 
     # File Server
-    echo "[2/3] Building File Server image..."
+    echo "[2/4] Building File Server image..."
     docker build -t "$(get_image_name redteam-lab-fileserver)" "$CONTAINERS_DIR/fileserver/"
 
     # Workstation (BeEF victim)
-    echo "[3/3] Building Workstation image..."
+    echo "[3/4] Building Workstation image..."
     docker build -t "$(get_image_name redteam-lab-workstation)" "$CONTAINERS_DIR/workstation/"
+
+    # Samba AD DC (Linux-based Domain Controller)
+    echo "[4/4] Building Samba AD DC image..."
+    docker build -t "$(get_image_name redteam-lab-samba-dc)" "$CONTAINERS_DIR/samba-dc/"
 
     echo ""
     echo "=== Build Complete ==="
@@ -87,6 +91,7 @@ push_images() {
     docker push "$(get_image_name redteam-lab-wordpress)"
     docker push "$(get_image_name redteam-lab-fileserver)"
     docker push "$(get_image_name redteam-lab-workstation)"
+    docker push "$(get_image_name redteam-lab-samba-dc)"
 
     echo ""
     echo "=== Push Complete ==="
