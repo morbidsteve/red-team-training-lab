@@ -5,13 +5,13 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Samba AD DC and dependencies
+# Note: samba package includes AD DC functionality in Ubuntu 22.04
 RUN apt-get update && apt-get install -y \
     samba \
-    samba-ad-dc \
     samba-dsdb-modules \
     samba-vfs-modules \
     krb5-user \
-    krb5-config \
+    krb5-kdc \
     winbind \
     libnss-winbind \
     libpam-winbind \
@@ -20,7 +20,8 @@ RUN apt-get update && apt-get install -y \
     ldb-tools \
     acl \
     attr \
-    supervisor \
+    python3 \
+    python3-samba \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
