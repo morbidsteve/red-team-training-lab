@@ -440,6 +440,22 @@ PYEOF
         # macOS: use user's Library folder (no sudo needed)
         CYROID_DATA_DIR="$HOME/Library/Application Support/cyroid"
         mkdir -p "$CYROID_DATA_DIR"/{iso-cache,template-storage,vm-storage,shared}
+
+        # Patch CYROID's docker-compose.yml to use macOS paths
+        log "Patching CYROID for macOS paths..."
+        if [ -f docker-compose.yml ]; then
+            # Use Python for reliable path replacement (handles spaces in path)
+            python3 -c "
+import sys
+path = sys.argv[1]
+with open('docker-compose.yml', 'r') as f:
+    content = f.read()
+content = content.replace('/data/cyroid', path)
+with open('docker-compose.yml', 'w') as f:
+    f.write(content)
+" "$CYROID_DATA_DIR"
+            log "Patched docker-compose.yml for macOS"
+        fi
     else
         # Linux: use /data/cyroid (requires sudo)
         CYROID_DATA_DIR="/data/cyroid"
