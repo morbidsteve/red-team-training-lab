@@ -154,6 +154,11 @@ def get_range_blueprint(subnet_offset: int = 0, dc_type: str = "windows"):
     Args:
         subnet_offset: Adds to second octet (e.g., 0 -> 172.16.x.x, 1 -> 172.17.x.x)
         dc_type: "windows" for Windows DC or "samba" for Samba AD DC
+
+    VM network configuration:
+        - Single network: {"network": "name", "ip": "x.x.x.x"}
+        - Multi-homed: {"networks": [{"network": "name1", "ip": "x.x.x.x"}, {"network": "name2", "ip": "y.y.y.y"}]}
+          First network in the list is the primary network used for VM creation.
     """
     base = 16 + subnet_offset
 
@@ -177,10 +182,26 @@ def get_range_blueprint(subnet_offset: int = 0, dc_type: str = "windows"):
             {"template": "Red Team - Kali Attack Box", "hostname": "kali", "network": "internet", "ip": f"172.{base}.0.10"},
             {"template": "Red Team - Redirector", "hostname": "redir1", "network": "internet", "ip": f"172.{base}.0.20"},
             {"template": "Red Team - Redirector", "hostname": "redir2", "network": "internet", "ip": f"172.{base}.0.21"},
-            {"template": "Red Team - WordPress Target", "hostname": "webserver", "network": "dmz", "ip": f"172.{base}.1.10"},
+            # WordPress is multi-homed: accessible from internet (attacker) and dmz
+            {
+                "template": "Red Team - WordPress Target",
+                "hostname": "webserver",
+                "networks": [
+                    {"network": "dmz", "ip": f"172.{base}.1.10"},
+                    {"network": "internet", "ip": f"172.{base}.0.100"}
+                ]
+            },
             {"template": dc_template, "hostname": dc_hostname, "network": "internal", "ip": f"172.{base}.2.10"},
             {"template": "Red Team - File Server", "hostname": "fileserver", "network": "internal", "ip": f"172.{base}.2.20"},
-            {"template": "Red Team - Victim Workstation", "hostname": "ws01", "network": "internal", "ip": f"172.{base}.2.30"}
+            # Workstation is multi-homed: on internal network but also reachable from dmz
+            {
+                "template": "Red Team - Victim Workstation",
+                "hostname": "ws01",
+                "networks": [
+                    {"network": "internal", "ip": f"172.{base}.2.30"},
+                    {"network": "dmz", "ip": f"172.{base}.1.30"}
+                ]
+            }
         ]
     }
 
@@ -281,6 +302,19 @@ class CyroidImporter:
             print(f"    Failed to create VM: {resp.status_code} - {resp.text}")
         return None
 
+    def attach_network(self, vm_id: str, network_id: str, ip_address: str) -> bool:
+        """Attach an additional network interface to a VM."""
+        resp = requests.post(
+            f"{self.api_url}/vms/{vm_id}/networks",
+            headers=self.headers,
+            json={"network_id": network_id, "ip_address": ip_address}
+        )
+        if resp.status_code in (200, 201):
+            return True
+        else:
+            print(f"      Failed to attach network: {resp.status_code} - {resp.text}")
+            return False
+
     def import_templates(self, templates: list) -> tuple:
         """Import all Red Team Lab templates. Returns (id_map, details_map)."""
         print("\n=== Importing Templates ===")
@@ -335,28 +369,57 @@ class CyroidImporter:
             template_name = vm['template']
             template_id = template_map.get(template_name)
             template = template_details.get(template_name, {})
-            network_id = network_map.get(vm['network'])
 
             if not template_id:
                 print(f"  [SKIP] {vm['hostname']} - template not found: {template_name}")
                 continue
 
+            # Handle multi-homed VMs (multiple networks) vs single network
+            if 'networks' in vm:
+                # Multi-homed VM: first network is primary
+                primary_net = vm['networks'][0]
+                additional_nets = vm['networks'][1:]
+                network_name = primary_net['network']
+                ip_address = primary_net['ip']
+            else:
+                # Single network VM
+                network_name = vm['network']
+                ip_address = vm['ip']
+                additional_nets = []
+
+            network_id = network_map.get(network_name)
             if not network_id:
-                print(f"  [SKIP] {vm['hostname']} - network not found: {vm['network']}")
+                print(f"  [SKIP] {vm['hostname']} - network not found: {network_name}")
                 continue
 
             vm_data = {
                 "hostname": vm['hostname'],
                 "template_id": template_id,
                 "network_id": network_id,
-                "ip_address": vm['ip'],
+                "ip_address": ip_address,
                 "cpu": template.get('default_cpu', 2),
                 "ram_mb": template.get('default_ram_mb', 2048),
                 "disk_gb": template.get('default_disk_gb', 20)
             }
 
-            print(f"  [CREATE] {vm['hostname']} ({vm['ip']})")
-            self.create_vm(range_id, vm_data)
+            net_info = ip_address
+            if additional_nets:
+                additional_ips = [n['ip'] for n in additional_nets]
+                net_info = f"{ip_address} + {', '.join(additional_ips)}"
+
+            print(f"  [CREATE] {vm['hostname']} ({net_info})")
+            result = self.create_vm(range_id, vm_data)
+
+            # Attach additional networks for multi-homed VMs
+            if result and additional_nets:
+                vm_id = result.get('id')
+                for add_net in additional_nets:
+                    add_network_id = network_map.get(add_net['network'])
+                    if add_network_id:
+                        print(f"    [ATTACH] {add_net['network']} ({add_net['ip']})")
+                        self.attach_network(vm_id, add_network_id, add_net['ip'])
+                    else:
+                        print(f"    [SKIP] Additional network not found: {add_net['network']}")
 
         return range_id
 
