@@ -42,6 +42,11 @@ RUN cd /tmp && \
     rm -rf /tmp/wordpress /tmp/latest.tar.gz && \
     rm -f /var/www/html/index.html
 
+# Install WP-CLI (pre-installed so it works on isolated networks)
+RUN curl -sO https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && \
+    chmod +x wp-cli.phar && \
+    mv wp-cli.phar /usr/local/bin/wp
+
 # Copy vulnerable plugin
 COPY acme-employee-portal /var/www/html/wp-content/plugins/acme-employee-portal
 

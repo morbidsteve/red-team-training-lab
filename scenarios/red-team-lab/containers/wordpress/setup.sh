@@ -20,14 +20,7 @@ mysql < /mysql-init.sql
 # Start SSH
 service ssh start
 
-# Install WP-CLI
-if [ ! -f /usr/local/bin/wp ]; then
-    curl -sO https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-    chmod +x wp-cli.phar
-    mv wp-cli.phar /usr/local/bin/wp
-fi
-
-# Install WordPress if not done
+# Install WordPress if not done (WP-CLI is pre-installed in the image)
 if ! wp core is-installed --path=/var/www/html --allow-root 2>/dev/null; then
     wp core install \
         --path=/var/www/html \
