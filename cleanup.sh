@@ -95,10 +95,17 @@ if [ "$FULL_CLEANUP" = "true" ]; then
         log "CYROID platform stopped"
     fi
 
-    # Remove CYROID data
-    if [ -d "/data/cyroid" ]; then
-        log "Removing CYROID data directory..."
-        sudo rm -rf /data/cyroid
+    # Remove CYROID data (check both Linux and macOS paths)
+    MACOS_DATA_DIR="$HOME/Library/Application Support/cyroid"
+    LINUX_DATA_DIR="/data/cyroid"
+
+    if [ -d "$MACOS_DATA_DIR" ]; then
+        log "Removing CYROID data directory (macOS)..."
+        rm -rf "$MACOS_DATA_DIR"
+        log "CYROID data removed"
+    elif [ -d "$LINUX_DATA_DIR" ]; then
+        log "Removing CYROID data directory (Linux)..."
+        sudo rm -rf "$LINUX_DATA_DIR"
         log "CYROID data removed"
     fi
 

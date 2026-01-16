@@ -138,19 +138,34 @@ echo ""
 # ----------------------------
 log "Checking prerequisites..."
 
+# Detect OS for platform-specific instructions
+HOST_OS="$(uname -s)"
+
 # Docker (always needed for building images)
 if ! command -v docker &> /dev/null; then
-    error "Docker not installed. Install with: sudo apt install docker.io docker-compose-v2"
+    if [ "$HOST_OS" == "Darwin" ]; then
+        error "Docker not installed. Install Docker Desktop from https://docker.com/products/docker-desktop"
+    else
+        error "Docker not installed. Install with: sudo apt install docker.io docker-compose-v2"
+    fi
 fi
 
 # Check if user can run docker
 if ! docker ps &> /dev/null; then
-    error "Cannot run docker. Add yourself to docker group: sudo usermod -aG docker \$USER (then logout/login)"
+    if [ "$HOST_OS" == "Darwin" ]; then
+        error "Cannot connect to Docker. Make sure Docker Desktop is running."
+    else
+        error "Cannot run docker. Add yourself to docker group: sudo usermod -aG docker \$USER (then logout/login)"
+    fi
 fi
 
 # Python3
 if ! command -v python3 &> /dev/null; then
-    error "Python3 not installed. Install with: sudo apt install python3 python3-pip"
+    if [ "$HOST_OS" == "Darwin" ]; then
+        error "Python3 not installed. Install with: brew install python3"
+    else
+        error "Python3 not installed. Install with: sudo apt install python3 python3-pip"
+    fi
 fi
 
 # requests module
@@ -161,13 +176,21 @@ fi
 
 # Git (needed to clone CYROID)
 if ! command -v git &> /dev/null; then
-    error "Git not installed. Install with: sudo apt install git"
+    if [ "$HOST_OS" == "Darwin" ]; then
+        error "Git not installed. Install with: brew install git"
+    else
+        error "Git not installed. Install with: sudo apt install git"
+    fi
 fi
 
 if [ "$DEPLOY_MODE" == "local" ]; then
     # Docker Compose v2 (only for local)
     if ! docker compose version &> /dev/null; then
-        error "Docker Compose v2 not found. Install with: sudo apt install docker-compose-v2"
+        if [ "$HOST_OS" == "Darwin" ]; then
+            error "Docker Compose v2 not found. Update Docker Desktop to latest version."
+        else
+            error "Docker Compose v2 not found. Install with: sudo apt install docker-compose-v2"
+        fi
     fi
 
     # Detect OS and KVM availability to determine DC type
@@ -191,7 +214,7 @@ if [ "$DEPLOY_MODE" == "local" ]; then
             # Linux without KVM
             DC_TYPE="samba"
             warn "KVM not available - using Samba AD DC (Windows DC requires KVM for acceptable performance)"
-            warn "To enable KVM: sudo apt install qemu-kvm && sudo usermod -aG kvm \$USER"
+            warn "To enable KVM on Linux: sudo apt install qemu-kvm && sudo usermod -aG kvm \$USER"
         fi
     else
         # Unknown OS - default to Samba
@@ -407,8 +430,19 @@ PYEOF
     # ----------------------------
     log "Creating data directories..."
 
-    sudo mkdir -p /data/cyroid/{iso-cache,template-storage,vm-storage,shared}
-    sudo chown -R $USER:$USER /data/cyroid
+    # Use platform-appropriate data directory
+    if [ "$OS_TYPE" == "Darwin" ]; then
+        # macOS: use user's Library folder (no sudo needed)
+        CYROID_DATA_DIR="$HOME/Library/Application Support/cyroid"
+        mkdir -p "$CYROID_DATA_DIR"/{iso-cache,template-storage,vm-storage,shared}
+    else
+        # Linux: use /data/cyroid (requires sudo)
+        CYROID_DATA_DIR="/data/cyroid"
+        sudo mkdir -p "$CYROID_DATA_DIR"/{iso-cache,template-storage,vm-storage,shared}
+        sudo chown -R $USER:$USER "$CYROID_DATA_DIR"
+    fi
+    export CYROID_DATA_DIR
+    log "Data directory: $CYROID_DATA_DIR"
 
     # ----------------------------
     # Step 5: Setup Environment
