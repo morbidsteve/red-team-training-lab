@@ -171,7 +171,12 @@ fi
 # requests module
 if ! python3 -c "import requests" &> /dev/null; then
     log "Installing Python requests module..."
-    pip3 install requests --quiet
+    if [ "$HOST_OS" == "Darwin" ]; then
+        # macOS: use --user flag or pipx to avoid externally-managed-environment error
+        pip3 install --user requests --quiet 2>/dev/null || pip3 install --break-system-packages requests --quiet
+    else
+        pip3 install requests --quiet
+    fi
 fi
 
 # Git (needed to clone CYROID)
