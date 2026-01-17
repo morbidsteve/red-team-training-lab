@@ -639,6 +639,8 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     echo "  2. Login with credentials above"
     echo "  3. Go to Ranges and select a student lab"
     echo "  4. Click 'Deploy' to start the environment"
+    echo "  5. After deployment completes, run: ./scripts/fix-networking.sh"
+    echo "     (This enables console access and multi-homed networking)"
     echo ""
     echo "To add more student environments later:"
     echo "  export CYROID_API_URL=http://localhost/api/v1"
