@@ -2,27 +2,23 @@ FROM kasmweb/kali-rolling-desktop:1.14.0
 
 USER root
 
+# Disable VNC authentication (CYROID handles access control)
+ENV VNCOPTIONS="-SecurityTypes None"
+
 # Fix Kali GPG key and update repos
 RUN wget -q -O - https://archive.kali.org/archive-key.asc | apt-key add - && \
     apt-get update
 
-# Fix Python crypt module (removed in Python 3.13, needed by KasmVNC)
-# Create a minimal crypt.py using only standard library
-RUN mkdir -p /usr/lib/python3/dist-packages && \
-    printf '%s\n' \
-    '"""Compatibility shim for removed crypt module (Python 3.13+)"""' \
-    'import hashlib' \
-    'import os' \
+# Install passlib for proper crypt compatibility (Python 3.13 removed crypt module)
+RUN apt-get install -y python3-passlib
+
+# Create crypt.py shim using passlib (KasmVNC startup needs it)
+RUN printf '%s\n' \
+    'from passlib.hash import sha256_crypt' \
     'def crypt(word, salt=None):' \
     '    if salt is None:' \
-    '        salt = "$5$" + os.urandom(8).hex() + "$"' \
-    '    if "$5$" in str(salt):' \
-    '        parts = str(salt).split("$")' \
-    '        actual_salt = parts[2][:16] if len(parts) >= 3 else str(salt)[:16]' \
-    '        h = hashlib.sha256((actual_salt + word).encode()).hexdigest()' \
-    '        return "$5$" + actual_salt + "$" + h' \
-    '    h = hashlib.sha256((str(salt)[:8] + word).encode()).hexdigest()' \
-    '    return "$5$" + str(salt)[:8] + "$" + h' \
+    '        return sha256_crypt.hash(word)' \
+    '    return sha256_crypt.using(salt=salt.split("$")[2] if "$" in salt else salt[:16]).hash(word)' \
     > /usr/lib/python3/dist-packages/crypt.py
 
 # Install Kali metapackages and common red team tools
