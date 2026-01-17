@@ -11,7 +11,7 @@ Usage:
     python import-to-cyroid.py
 
     # Or specify URL directly
-    python import-to-cyroid.py --api-url http://localhost:8000/api --token YOUR_TOKEN
+    python import-to-cyroid.py --api-url http://localhost/api/v1 --token YOUR_TOKEN
 """
 
 import os
@@ -37,11 +37,13 @@ def get_templates(local=False, registry="ghcr.io/your-org", dc_type="windows"):
     """
 
     if local:
+        kali_image = "redteam-lab-kali:latest"
         wordpress_image = "redteam-lab-wordpress:latest"
         fileserver_image = "redteam-lab-fileserver:latest"
         workstation_image = "redteam-lab-workstation:latest"
         samba_dc_image = "redteam-lab-samba-dc:latest"
     else:
+        kali_image = f"{registry}/redteam-lab-kali:latest"
         wordpress_image = f"{registry}/redteam-lab-wordpress:latest"
         fileserver_image = f"{registry}/redteam-lab-fileserver:latest"
         workstation_image = f"{registry}/redteam-lab-workstation:latest"
@@ -50,11 +52,11 @@ def get_templates(local=False, registry="ghcr.io/your-org", dc_type="windows"):
     templates = [
         {
             "name": "Red Team - Kali Attack Box",
-            "description": "Kali Linux with KasmVNC desktop and penetration testing tools",
+            "description": "Kali Linux with KasmVNC desktop - includes gobuster, sqlmap, impacket, metasploit, wordlists, and more",
             "os_type": "linux",
             "os_variant": "Kali Linux",
             "vm_type": "container",
-            "base_image": "kasmweb/kali-rolling-desktop:1.14.0",
+            "base_image": kali_image,
             "default_cpu": 4,
             "default_ram_mb": 4096,
             "default_disk_gb": 60,
@@ -426,7 +428,7 @@ class CyroidImporter:
 
 def main():
     parser = argparse.ArgumentParser(description="Import Red Team Lab into CYROID")
-    parser.add_argument("--api-url", default=os.environ.get("CYROID_API_URL", "http://localhost:8000/api"))
+    parser.add_argument("--api-url", default=os.environ.get("CYROID_API_URL", "http://localhost/api/v1"))
     parser.add_argument("--token", default=os.environ.get("CYROID_TOKEN"))
     parser.add_argument("--range-name", help="Custom name for the range")
     parser.add_argument("--templates-only", action="store_true", help="Only import templates, don't create range")
