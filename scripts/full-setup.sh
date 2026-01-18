@@ -113,6 +113,20 @@ fi
 # Fix VyOS template bug if present
 docker compose exec -T db psql -U cyroid -d cyroid -c "UPDATE vm_templates SET default_disk_gb = 10 WHERE default_disk_gb < 10;" 2>/dev/null || true
 
+# Fix missing event types in database enum (CYROID bug)
+log "Fixing database event types..."
+docker compose exec -T db psql -U cyroid -d cyroid -c "
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'DEPLOYMENT_STARTED';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'DEPLOYMENT_STEP';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'DEPLOYMENT_COMPLETED';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'DEPLOYMENT_FAILED';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'ROUTER_CREATING';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'ROUTER_CREATED';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'NETWORK_CREATING';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'NETWORK_CREATED';
+ALTER TYPE eventtype ADD VALUE IF NOT EXISTS 'VM_CREATING';
+" 2>/dev/null || true
+
 # Step 3: Build Red Team Lab images
 if [ "$SKIP_BUILD" = false ]; then
     log "Step 3: Building Red Team Lab images..."
