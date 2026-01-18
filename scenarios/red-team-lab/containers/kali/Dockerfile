@@ -2,9 +2,6 @@ FROM kasmweb/kali-rolling-desktop:1.14.0
 
 USER root
 
-# Disable VNC authentication (CYROID handles access control)
-ENV VNCOPTIONS="-SecurityTypes None"
-
 # Fix Kali GPG key and update repos
 RUN wget -q -O - https://archive.kali.org/archive-key.asc | apt-key add - && \
     apt-get update
@@ -72,5 +69,13 @@ RUN gunzip -k /usr/share/wordlists/rockyou.txt.gz 2>/dev/null || true
 # Create convenient symlinks
 RUN ln -sf /usr/share/wordlists /wordlists 2>/dev/null || true && \
     ln -sf /usr/share/seclists /seclists 2>/dev/null || true
+
+# Disable VNC authentication (CYROID handles access control)
+# Replace password hash variables with empty strings and write empty passwords to file
+# This must be AFTER tool installation to preserve Docker layer cache for faster iteration
+RUN sed -i 's|VNC_PW_HASH=.*|VNC_PW_HASH=""|' /dockerstartup/vnc_startup.sh && \
+    sed -i 's|VNC_VIEW_PW_HASH=.*|VNC_VIEW_PW_HASH=""|' /dockerstartup/vnc_startup.sh && \
+    sed -i 's|echo "kasm_user:\${VNC_PW_HASH}:ow"|echo "kasm_user::ow"|' /dockerstartup/vnc_startup.sh && \
+    sed -i 's|echo "kasm_viewer:\${VNC_VIEW_PW_HASH}:"|echo "kasm_viewer::"|' /dockerstartup/vnc_startup.sh
 
 USER 1000
