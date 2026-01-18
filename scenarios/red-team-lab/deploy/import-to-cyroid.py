@@ -114,21 +114,10 @@ def get_templates(local=False, registry="ghcr.io/your-org", dc_type="windows"):
         }
     ]
 
-    # Add the appropriate DC template based on dc_type
+    # For Samba DC, use the built-in CYROID template (no custom template needed)
+    # The range blueprint will reference "Samba AD DC" which exists in CYROID
     if dc_type == "samba":
-        templates.append({
-            "name": "Red Team - Samba AD DC",
-            "description": "Samba 4 Active Directory DC with misconfigurations (Linux-based, no KVM required)",
-            "os_type": "linux",
-            "os_variant": "Ubuntu 22.04",
-            "vm_type": "container",
-            "base_image": samba_dc_image,
-            "default_cpu": 2,
-            "default_ram_mb": 2048,
-            "default_disk_gb": 20,
-            "tags": ["red-team", "victim", "samba", "dc", "ad"],
-            "config_script": "# Samba AD DC auto-provisions on first startup"
-        })
+        pass  # Use built-in "Samba AD DC" template
     else:
         templates.append({
             "name": "Red Team - Windows DC",
@@ -166,7 +155,7 @@ def get_range_blueprint(subnet_offset: int = 0, dc_type: str = "windows"):
 
     # Select DC template and hostname based on dc_type
     if dc_type == "samba":
-        dc_template = "Red Team - Samba AD DC"
+        dc_template = "Samba AD DC"  # Use built-in CYROID template
         dc_hostname = "DC01"
     else:
         dc_template = "Red Team - Windows DC"
@@ -367,10 +356,20 @@ class CyroidImporter:
 
         # Create VMs
         print("\n=== Creating VMs ===")
+
+        # Get all existing templates to resolve built-in templates not in our list
+        all_existing_templates = self.get_existing_templates()
+
         for vm in blueprint['vms']:
             template_name = vm['template']
             template_id = template_map.get(template_name)
             template = template_details.get(template_name, {})
+
+            # If template not in our map, check if it's a built-in CYROID template
+            if not template_id and template_name in all_existing_templates:
+                print(f"  [BUILTIN] Using existing template: {template_name}")
+                template_id = all_existing_templates[template_name]['id']
+                template = all_existing_templates[template_name]
 
             if not template_id:
                 print(f"  [SKIP] {vm['hostname']} - template not found: {template_name}")

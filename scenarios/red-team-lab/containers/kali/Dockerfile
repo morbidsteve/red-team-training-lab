@@ -71,11 +71,12 @@ RUN ln -sf /usr/share/wordlists /wordlists 2>/dev/null || true && \
     ln -sf /usr/share/seclists /seclists 2>/dev/null || true
 
 # Disable VNC authentication (CYROID handles access control)
-# Replace password hash variables with empty strings and write empty passwords to file
+# Add -disableBasicAuth to vncserver commands and set empty passwords
 # This must be AFTER tool installation to preserve Docker layer cache for faster iteration
 RUN sed -i 's|VNC_PW_HASH=.*|VNC_PW_HASH=""|' /dockerstartup/vnc_startup.sh && \
     sed -i 's|VNC_VIEW_PW_HASH=.*|VNC_VIEW_PW_HASH=""|' /dockerstartup/vnc_startup.sh && \
     sed -i 's|echo "kasm_user:\${VNC_PW_HASH}:ow"|echo "kasm_user::ow"|' /dockerstartup/vnc_startup.sh && \
-    sed -i 's|echo "kasm_viewer:\${VNC_VIEW_PW_HASH}:"|echo "kasm_viewer::"|' /dockerstartup/vnc_startup.sh
+    sed -i 's|echo "kasm_viewer:\${VNC_VIEW_PW_HASH}:"|echo "kasm_viewer::"|' /dockerstartup/vnc_startup.sh && \
+    sed -i 's|vncserver \$DISPLAY|vncserver -disableBasicAuth \$DISPLAY|g' /dockerstartup/vnc_startup.sh
 
 USER 1000
