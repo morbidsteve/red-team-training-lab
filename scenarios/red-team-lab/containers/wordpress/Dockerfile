@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y \
     unzip \
     openssh-server \
     sudo \
+    iproute2 \
+    iputils-ping \
+    net-tools \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

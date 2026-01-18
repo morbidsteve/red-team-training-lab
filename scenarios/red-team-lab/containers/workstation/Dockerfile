@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     xvfb \
     wget \
+    iproute2 \
+    iputils-ping \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

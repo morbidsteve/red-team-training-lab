@@ -1,6 +1,26 @@
 #!/bin/bash
 set -e
 
+# Configure network routing (VyOS router is gateway at .1)
+# This is needed because CYROID uses VyOS as gateway instead of Docker bridge
+configure_routing() {
+    local ip=$(hostname -I | awk '{print $1}')
+    if [ -n "$ip" ]; then
+        # Extract network prefix and set gateway to .1
+        local gateway=$(echo "$ip" | sed 's/\.[0-9]*$/.1/')
+
+        # Check if we already have a default route
+        if ! ip route show default | grep -q "via $gateway"; then
+            # Delete existing default route if any
+            ip route del default 2>/dev/null || true
+            # Add route via VyOS router
+            ip route add default via "$gateway" 2>/dev/null || true
+            echo "Configured default route via $gateway"
+        fi
+    fi
+}
+configure_routing
+
 # Start MySQL
 service mysql start
 
