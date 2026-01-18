@@ -155,6 +155,13 @@ fi
 export CYROID_TOKEN
 python3 import-to-cyroid.py --local --templates-only 2>/dev/null || python3 import-to-cyroid.py --local
 
+# Clean up any leftover range networks before import
+log "Cleaning up any leftover Docker networks..."
+docker network ls --filter "name=cyroid-internet" -q | xargs -r docker network rm 2>/dev/null || true
+docker network ls --filter "name=cyroid-dmz" -q | xargs -r docker network rm 2>/dev/null || true
+docker network ls --filter "name=cyroid-internal" -q | xargs -r docker network rm 2>/dev/null || true
+docker network ls --filter "name=cyroid-management" -q | xargs -r docker network rm 2>/dev/null || true
+
 # Step 5: Import range using proper API
 log "Step 5: Importing range via API..."
 IMPORT_RESULT=$(curl -s -X POST -H "Authorization: Bearer $CYROID_TOKEN" \
