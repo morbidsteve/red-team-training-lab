@@ -136,8 +136,8 @@ else
     warn "Skipping image build"
 fi
 
-# Step 4: Import into CYROID
-log "Step 4: Importing Red Team Lab into CYROID..."
+# Step 4: Create VM templates in CYROID
+log "Step 4: Creating VM templates..."
 cd "$LAB_DIR/scenarios/red-team-lab/deploy"
 
 # Get auth token
@@ -151,8 +151,23 @@ if [ -z "$CYROID_TOKEN" ] || [ "$CYROID_TOKEN" = "null" ]; then
     exit 1
 fi
 
+# Create templates using the old script (it handles template creation well)
 export CYROID_TOKEN
-python3 import-to-cyroid.py --local
+python3 import-to-cyroid.py --local --templates-only 2>/dev/null || python3 import-to-cyroid.py --local
+
+# Step 5: Import range using proper API
+log "Step 5: Importing range via API..."
+IMPORT_RESULT=$(curl -s -X POST -H "Authorization: Bearer $CYROID_TOKEN" \
+    -H "Content-Type: application/json" \
+    "http://localhost/api/v1/ranges/import" \
+    -d @"$LAB_DIR/scenarios/red-team-lab/deploy/range-template.json")
+
+RANGE_ID=$(echo "$IMPORT_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null)
+if [ -n "$RANGE_ID" ] && [ "$RANGE_ID" != "null" ]; then
+    log "Range imported: $RANGE_ID"
+else
+    warn "Range import may have failed. Check CYROID UI."
+fi
 
 echo ""
 echo "============================================"

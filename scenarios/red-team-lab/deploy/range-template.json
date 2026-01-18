@@ -1,0 +1,69 @@
+{
+  "template": {
+    "version": "1.0",
+    "name": "Red Team Training Lab",
+    "description": "Attack training: SQLi, credential theft, lateral movement, AD compromise",
+    "networks": [
+      {"name": "internet", "subnet": "172.16.0.0/24", "gateway": "172.16.0.1", "is_isolated": false},
+      {"name": "dmz", "subnet": "172.16.1.0/24", "gateway": "172.16.1.1", "is_isolated": true},
+      {"name": "internal", "subnet": "172.16.2.0/24", "gateway": "172.16.2.1", "is_isolated": true}
+    ],
+    "vms": [
+      {
+        "hostname": "kali",
+        "ip_address": "172.16.0.10",
+        "network_name": "internet",
+        "template_name": "Red Team - Kali Attack Box",
+        "cpu": 2,
+        "ram_mb": 4096,
+        "disk_gb": 40,
+        "position_x": 100,
+        "position_y": 200
+      },
+      {
+        "hostname": "webserver",
+        "ip_address": "172.16.1.10",
+        "network_name": "dmz",
+        "template_name": "Red Team - WordPress Target",
+        "cpu": 1,
+        "ram_mb": 2048,
+        "disk_gb": 20,
+        "position_x": 400,
+        "position_y": 200
+      },
+      {
+        "hostname": "dc01",
+        "ip_address": "172.16.2.10",
+        "network_name": "internal",
+        "template_name": "Red Team - Windows DC",
+        "cpu": 2,
+        "ram_mb": 4096,
+        "disk_gb": 40,
+        "position_x": 700,
+        "position_y": 100
+      },
+      {
+        "hostname": "fileserver",
+        "ip_address": "172.16.2.20",
+        "network_name": "internal",
+        "template_name": "Red Team - File Server",
+        "cpu": 1,
+        "ram_mb": 1024,
+        "disk_gb": 20,
+        "position_x": 700,
+        "position_y": 200
+      },
+      {
+        "hostname": "ws01",
+        "ip_address": "172.16.2.30",
+        "network_name": "internal",
+        "template_name": "Red Team - Victim Workstation",
+        "cpu": 1,
+        "ram_mb": 2048,
+        "disk_gb": 20,
+        "position_x": 700,
+        "position_y": 300
+      }
+    ]
+  }
+}
