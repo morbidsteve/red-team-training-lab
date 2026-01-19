@@ -54,35 +54,43 @@ ATTACKER (Kali)
 
 ## Deployment Options
 
-### Option 1: Import to Existing CYROID
+### Option 1: One-Click Blueprint Import (Recommended)
 
-If you already have CYROID running:
+The easiest way - import the pre-built blueprint directly into CYROID:
+
+1. **Build the container images** (one-time setup):
+   ```bash
+   cd scenarios/red-team-lab
+   ./deploy/build-local.sh
+   ```
+
+2. **Import the blueprint** in CYROID UI:
+   - Go to **Blueprints** → **Import**
+   - Upload `red-team-training-lab.blueprint.zip` from this repo
+   - Click **Import**
+
+3. **Deploy an instance**:
+   - Click **Deploy** on the imported blueprint
+   - Name your range (e.g., "Student 1")
+   - Check "Auto-deploy" and click **Create**
+
+That's it! The range will deploy with all 7 VMs and proper networking.
+
+### Option 2: API Import
+
+If you prefer command-line:
 
 ```bash
 # 1. Build container images
-cd scenarios/red-team-lab/deploy
-./build-images.sh -r your-registry.com/org build
-./build-images.sh -r your-registry.com/org push
+cd scenarios/red-team-lab
+./deploy/build-local.sh
 
-# 2. Get your CYROID API token (from the UI or via login)
-export CYROID_API_URL=https://your-cyroid.com/api
+# 2. Import blueprint via API
 export CYROID_TOKEN=your-jwt-token
-
-# 3. Import templates and create range
-python import-to-cyroid.py
-
-# 4. Deploy the range from CYROID UI
+curl -X POST "http://localhost/api/v1/blueprints/import" \
+  -H "Authorization: Bearer $CYROID_TOKEN" \
+  -F "file=@../../red-team-training-lab.blueprint.zip"
 ```
-
-### Option 2: Export as JSON
-
-Export templates for manual import:
-
-```bash
-python deploy/import-to-cyroid.py --export-json redteam-lab.json
-```
-
-Then import via CYROID API or UI.
 
 ### Option 3: Fresh CYROID Installation
 
@@ -164,22 +172,27 @@ All credentials are intentionally weak and reused across systems:
 ## Directory Structure
 
 ```
-scenarios/red-team-lab/
-├── README.md               # This file
-├── range-blueprint.yml     # Full range definition
-├── configs/
-│   └── credentials.yml     # All lab credentials
-├── containers/
-│   ├── wordpress/          # SQLi/XSS target
-│   ├── fileserver/         # Sensitive data
-│   ├── workstation/        # BeEF victim
-│   ├── windows-dc/         # Windows DC setup (Linux+KVM)
-│   └── samba-dc/           # Samba AD DC (macOS/Linux)
-├── plugins/
-│   └── acme-employee-portal/  # Vulnerable WP plugin
-└── deploy/
-    ├── import-to-cyroid.py # Import script
-    └── build-images.sh     # Build containers
+red-team-training-lab/
+├── red-team-training-lab.blueprint.zip  # ← IMPORT THIS INTO CYROID
+├── setup.sh                             # Full automated setup
+├── cleanup.sh                           # Clean up deployment
+└── scenarios/red-team-lab/
+    ├── README.md               # This file
+    ├── range-blueprint.yml     # Full range definition
+    ├── configs/
+    │   └── credentials.yml     # All lab credentials
+    ├── containers/
+    │   ├── wordpress/          # SQLi/XSS target
+    │   ├── fileserver/         # Sensitive data
+    │   ├── workstation/        # BeEF victim
+    │   ├── windows-dc/         # Windows DC setup (Linux+KVM)
+    │   └── samba-dc/           # Samba AD DC (macOS/Linux)
+    ├── plugins/
+    │   └── acme-employee-portal/  # Vulnerable WP plugin
+    └── deploy/
+        ├── build-local.sh      # Build container images
+        ├── import-to-cyroid.py # Import script (advanced)
+        └── build-images.sh     # Build & push to registry
 ```
 
 ## Customization
