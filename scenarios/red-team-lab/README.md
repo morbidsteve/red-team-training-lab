@@ -52,63 +52,42 @@ ATTACKER (Kali)
 └─────────────────────────────────────────┘
 ```
 
-## Deployment Options
+## Quick Start
 
-### Option 1: One-Click Blueprint Import (Recommended)
-
-The easiest way - import the pre-built blueprint directly into CYROID:
-
-1. **Build the container images** (one-time setup):
-   ```bash
-   cd scenarios/red-team-lab
-   ./deploy/build-local.sh
-   ```
-
-2. **Import the blueprint** in CYROID UI:
-   - Go to **Blueprints** → **Import**
-   - Upload `red-team-training-lab.blueprint.zip` from this repo
-   - Click **Import**
-
-3. **Deploy an instance**:
-   - Click **Deploy** on the imported blueprint
-   - Name your range (e.g., "Student 1")
-   - Check "Auto-deploy" and click **Create**
-
-That's it! The range will deploy with all 7 VMs and proper networking.
-
-### Option 2: API Import
-
-If you prefer command-line:
+**One command - does everything:**
 
 ```bash
-# 1. Build container images
-cd scenarios/red-team-lab
-./deploy/build-local.sh
-
-# 2. Import blueprint via API
-export CYROID_TOKEN=your-jwt-token
-curl -X POST "http://localhost/api/v1/blueprints/import" \
-  -H "Authorization: Bearer $CYROID_TOKEN" \
-  -F "file=@../../red-team-training-lab.blueprint.zip"
+./setup.sh
 ```
 
-### Option 3: Fresh CYROID Installation
+That's it. The script will:
+- Install CYROID (if not present)
+- Build all container images
+- Import templates and create the lab
+- Deploy and start all VMs
 
-Clone and run everything:
+When complete, access Kali at: `http://localhost` → Ranges → Red Team Training Lab → kali → Console
+
+### Options
 
 ```bash
-# Start CYROID
-docker compose up -d
+# Non-interactive (uses all defaults)
+./setup.sh --auto
 
-# Build lab images
-cd scenarios/red-team-lab/deploy
-./build-images.sh build
+# Multiple student environments
+NUM_STUDENTS=5 ./setup.sh
 
-# Import to local CYROID
-export CYROID_API_URL=http://localhost:8000/api
-# Login via UI first, then get token
-python import-to-cyroid.py
+# Use existing CYROID instance
+DEPLOY_CHOICE=2 ./setup.sh
 ```
+
+## Alternative: Blueprint Import
+
+If you already have CYROID running and just want to import the lab:
+
+1. Build images: `cd scenarios/red-team-lab && ./deploy/build-local.sh`
+2. Import `red-team-training-lab.blueprint.zip` via CYROID UI (Blueprints → Import)
+3. Deploy from the blueprint
 
 ## Components
 

@@ -64,6 +64,20 @@ ADMIN_PASS="${ADMIN_PASS:-RedTeam2024}"
 # Override with USE_SAMBA_DC=true to force Samba DC on Linux with KVM
 DC_TYPE=""
 
+# Auto mode - skip all prompts and use defaults
+# Set AUTO=1 or pass --auto/-y flag
+AUTO="${AUTO:-0}"
+for arg in "$@"; do
+    case $arg in
+        --auto|-y|--yes) AUTO=1 ;;
+    esac
+done
+
+# Helper to check if we should prompt
+should_prompt() {
+    [ "$AUTO" = "0" ] && [ -t 0 ]  # Not auto mode AND stdin is a TTY
+}
+
 echo ""
 echo "=============================================="
 echo "   Red Team Training Lab - Setup Script"
@@ -75,12 +89,16 @@ echo ""
 # ----------------------------
 # Can be set via environment: DEPLOY_CHOICE=1 (local) or DEPLOY_CHOICE=2 (remote)
 if [ -z "$DEPLOY_CHOICE" ]; then
-    prompt "Where do you want to deploy the Red Team Lab?"
-    echo ""
-    echo "  1) Local - Set up CYROID on this machine (default)"
-    echo "  2) Remote - Use an existing CYROID instance"
-    echo ""
-    read -p "Enter choice [1]: " DEPLOY_CHOICE
+    if should_prompt; then
+        prompt "Where do you want to deploy the Red Team Lab?"
+        echo ""
+        echo "  1) Local - Set up CYROID on this machine (default)"
+        echo "  2) Remote - Use an existing CYROID instance"
+        echo ""
+        read -p "Enter choice [1]: " DEPLOY_CHOICE
+    else
+        DEPLOY_CHOICE="1"
+    fi
 fi
 DEPLOY_CHOICE="${DEPLOY_CHOICE:-1}"
 
@@ -119,10 +137,14 @@ echo ""
 # Ask how many student ranges to create
 # Can be set via environment: NUM_STUDENTS=5
 if [ -z "$NUM_STUDENTS" ]; then
-    prompt "How many student lab environments do you want to create?"
-    echo "  (Each student gets their own isolated network environment)"
-    echo ""
-    read -p "Enter number of students [1]: " NUM_STUDENTS
+    if should_prompt; then
+        prompt "How many student lab environments do you want to create?"
+        echo "  (Each student gets their own isolated network environment)"
+        echo ""
+        read -p "Enter number of students [1]: " NUM_STUDENTS
+    else
+        NUM_STUDENTS="1"
+    fi
 fi
 NUM_STUDENTS="${NUM_STUDENTS:-1}"
 
@@ -570,12 +592,14 @@ if [ "$DEPLOY_MODE" == "local" ]; then
     ./deploy/build-local.sh
 else
     warn "Remote mode: Images must be available on remote CYROID"
-    echo ""
-    echo "Options:"
-    echo "  1) Use default images (ghcr.io/your-org/redteam-lab-*)"
-    echo "  2) Build and push to a registry the remote CYROID can access"
-    echo ""
-    read -p "Press Enter to continue with default images, or Ctrl+C to cancel: "
+    if should_prompt; then
+        echo ""
+        echo "Options:"
+        echo "  1) Use default images (ghcr.io/your-org/redteam-lab-*)"
+        echo "  2) Build and push to a registry the remote CYROID can access"
+        echo ""
+        read -p "Press Enter to continue with default images, or Ctrl+C to cancel: "
+    fi
 fi
 
 # ----------------------------
@@ -595,8 +619,9 @@ else
     python3 deploy/import-to-cyroid.py --templates-only --dc-type "$DC_TYPE"
 fi
 
-# Create ranges for each student
+# Create ranges for each student and collect range IDs
 log "Creating $NUM_STUDENTS student environment(s)..."
+RANGE_IDS=()
 for i in $(seq 1 $NUM_STUDENTS); do
     if [ "$NUM_STUDENTS" -eq 1 ]; then
         RANGE_NAME="Red Team Training Lab"
@@ -610,11 +635,63 @@ for i in $(seq 1 $NUM_STUDENTS); do
     echo ""
     log "Creating range: $RANGE_NAME (subnet: 172.$((16 + SUBNET_OFFSET)).x.x)"
     if [ "$DEPLOY_MODE" == "local" ]; then
-        python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET --dc-type "$DC_TYPE"
+        OUTPUT=$(python3 deploy/import-to-cyroid.py --local --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET --dc-type "$DC_TYPE" 2>&1)
     else
-        python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET --dc-type "$DC_TYPE"
+        OUTPUT=$(python3 deploy/import-to-cyroid.py --range-name "$RANGE_NAME" --subnet-offset $SUBNET_OFFSET --dc-type "$DC_TYPE" 2>&1)
+    fi
+    echo "$OUTPUT"
+
+    # Extract range ID from output
+    RANGE_ID=$(echo "$OUTPUT" | grep -oE "Range ID: [a-f0-9-]+" | cut -d' ' -f3)
+    if [ -n "$RANGE_ID" ]; then
+        RANGE_IDS+=("$RANGE_ID")
     fi
 done
+
+# ----------------------------
+# Step 11: Auto-Deploy Ranges
+# ----------------------------
+if [ ${#RANGE_IDS[@]} -gt 0 ]; then
+    log "Deploying ${#RANGE_IDS[@]} range(s)..."
+    for RANGE_ID in "${RANGE_IDS[@]}"; do
+        log "Deploying range $RANGE_ID..."
+        curl -s -X POST "${API_URL}/ranges/${RANGE_ID}/deploy" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" > /dev/null 2>&1 || true
+    done
+
+    # Wait for deployments to complete
+    log "Waiting for deployments to complete..."
+    MAX_WAIT=300
+    WAITED=0
+    ALL_RUNNING=false
+    while [ "$WAITED" -lt "$MAX_WAIT" ]; do
+        ALL_RUNNING=true
+        for RANGE_ID in "${RANGE_IDS[@]}"; do
+            STATUS=$(curl -s -H "Authorization: Bearer $TOKEN" "${API_URL}/ranges/${RANGE_ID}" 2>/dev/null | \
+                python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null)
+            if [ "$STATUS" != "running" ]; then
+                ALL_RUNNING=false
+                break
+            fi
+        done
+
+        if [ "$ALL_RUNNING" = true ]; then
+            break
+        fi
+
+        sleep 5
+        WAITED=$((WAITED + 5))
+        echo -ne "\r  Deploying... ${WAITED}s"
+    done
+    echo ""
+
+    if [ "$ALL_RUNNING" = true ]; then
+        log "All ranges deployed successfully!"
+    else
+        warn "Deployment still in progress. Check CYROID UI for status."
+    fi
+fi
 
 # ----------------------------
 # Done!
@@ -629,18 +706,12 @@ echo "Created $NUM_STUDENTS student environment(s)"
 echo ""
 
 if [ "$DEPLOY_MODE" == "local" ]; then
-    echo "CYROID Platform: $CYROID_DIR"
     echo "CYROID UI:       http://localhost"
     echo "Admin User:      ${ADMIN_USER}"
     echo "Admin Pass:      ${ADMIN_PASS}"
     echo ""
-    echo "Next Steps:"
-    echo "  1. Open http://localhost in your browser"
-    echo "  2. Login with credentials above"
-    echo "  3. Go to Ranges and select a student lab"
-    echo "  4. Click 'Deploy' to start the environment"
-    echo "  5. After deployment completes, run: ./scripts/fix-networking.sh"
-    echo "     (This enables console access and multi-homed networking)"
+    echo "Your lab is ready! Access Kali at:"
+    echo "  http://localhost → Ranges → Red Team Training Lab → kali → Console"
     echo ""
     echo "To add more student environments later:"
     echo "  export CYROID_API_URL=http://localhost/api/v1"
@@ -649,11 +720,8 @@ if [ "$DEPLOY_MODE" == "local" ]; then
 else
     echo "Remote CYROID: ${API_URL}"
     echo ""
-    echo "Next Steps:"
-    echo "  1. Open your CYROID instance in a browser"
-    echo "  2. Login with your credentials"
-    echo "  3. Go to Ranges and select a student lab"
-    echo "  4. Click 'Deploy' to start the environment"
+    echo "Your lab is ready! Access Kali at:"
+    echo "  ${API_URL%/api/v1} → Ranges → Red Team Training Lab → kali → Console"
     echo ""
     echo "To add more student environments later:"
     echo "  export CYROID_API_URL=${API_URL}"
