@@ -54,22 +54,25 @@ if [ "$FORCE_BUILD" = true ]; then
     echo "Force rebuild mode enabled"
 fi
 
-build_if_needed 1 4 "redteam-lab-kali:latest" "$CONTAINERS_DIR/kali/" \
+build_if_needed 1 5 "redteam-lab-kali:latest" "$CONTAINERS_DIR/kali/" \
     "Kali Attack Box (gobuster, sqlmap, impacket, metasploit, wordlists)"
 
-build_if_needed 2 4 "redteam-lab-wordpress:latest" "$CONTAINERS_DIR/wordpress/" \
+build_if_needed 2 5 "redteam-lab-wordpress:latest" "$CONTAINERS_DIR/wordpress/" \
     "WordPress (SQLi target)"
 
-build_if_needed 3 4 "redteam-lab-fileserver:latest" "$CONTAINERS_DIR/fileserver/" \
+build_if_needed 3 5 "redteam-lab-fileserver:latest" "$CONTAINERS_DIR/fileserver/" \
     "File Server"
 
-build_if_needed 4 4 "redteam-lab-workstation:latest" "$CONTAINERS_DIR/workstation/" \
+build_if_needed 4 5 "redteam-lab-workstation:latest" "$CONTAINERS_DIR/workstation/" \
     "Workstation (BeEF victim)"
+
+build_if_needed 5 5 "cyroid/samba-dc:latest" "$CONTAINERS_DIR/samba-dc/" \
+    "Samba Domain Controller (AD DC for macOS/non-KVM)"
 
 echo ""
 echo "=== Build Complete ==="
 echo ""
-docker images | grep -E "redteam-lab" | head -10
+docker images | grep -E "redteam-lab|cyroid/samba-dc" | head -10
 echo ""
 echo "Images are now available locally. CYROID can use them directly."
 echo ""

@@ -115,9 +115,9 @@ def get_templates(local=False, registry="ghcr.io/your-org", dc_type="windows"):
     ]
 
     # For Samba DC, use the built-in CYROID template (no custom template needed)
-    # The range blueprint will reference "Samba AD DC" which exists in CYROID
+    # The range blueprint will reference "Samba DC" which exists in CYROID
     if dc_type == "samba":
-        pass  # Use built-in "Samba AD DC" template
+        pass  # Use built-in "Samba DC" template
     else:
         templates.append({
             "name": "Red Team - Windows DC",
@@ -155,7 +155,7 @@ def get_range_blueprint(subnet_offset: int = 0, dc_type: str = "windows"):
 
     # Select DC template and hostname based on dc_type
     if dc_type == "samba":
-        dc_template = "Samba AD DC"  # Use built-in CYROID template
+        dc_template = "Samba DC"  # Use built-in CYROID template
         dc_hostname = "DC01"
     else:
         dc_template = "Red Team - Windows DC"
