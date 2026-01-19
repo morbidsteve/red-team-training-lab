@@ -54,13 +54,26 @@ ATTACKER (Kali)
 
 ## Quick Start
 
-**One command - does everything:**
+### Option 1: Zero-Setup Blueprint Import (Recommended)
+
+If you have CYROID v0.10.1+ running:
+
+1. Go to **Blueprints** → **Import** in the CYROID UI
+2. Upload `red-team-training-lab.blueprint.zip`
+3. Click **Import** - CYROID automatically builds all container images
+4. Click **Deploy** on the blueprint
+
+That's it! No manual image building required.
+
+### Option 2: Full Setup Script
+
+For a fresh installation (installs CYROID + lab):
 
 ```bash
 ./setup.sh
 ```
 
-That's it. The script will:
+The script will:
 - Install CYROID (if not present)
 - Build all container images
 - Import templates and create the lab
@@ -80,14 +93,6 @@ NUM_STUDENTS=5 ./setup.sh
 # Use existing CYROID instance
 DEPLOY_CHOICE=2 ./setup.sh
 ```
-
-## Alternative: Blueprint Import
-
-If you already have CYROID running and just want to import the lab:
-
-1. Build images: `cd scenarios/red-team-lab && ./deploy/build-local.sh`
-2. Import `red-team-training-lab.blueprint.zip` via CYROID UI (Blueprints → Import)
-3. Deploy from the blueprint
 
 ## Components
 
