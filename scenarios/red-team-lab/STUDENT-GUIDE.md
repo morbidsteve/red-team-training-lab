@@ -139,7 +139,50 @@ Or browse to: `http://172.16.0.100/employees/`
 
 You'll see a table of employees with a search box, and links to view individual employee details. Click on an employee name to see their detail page - notice the URL changes to include `?employee_id=1`.
 
-### 2.4 Testing for SQL Injection
+### 2.4 Understanding SQL Injection
+
+**What is SQL Injection?**
+
+SQL Injection (SQLi) occurs when user input is inserted directly into a SQL query without proper sanitization. This allows attackers to manipulate the query's logic and access or modify data they shouldn't be able to reach.
+
+**How does it work?**
+
+Imagine a web application that looks up employee details with code like this:
+
+```php
+// VULNERABLE CODE - Never do this!
+$query = "SELECT * FROM employees WHERE id = " . $_GET['employee_id'];
+```
+
+When you visit `?employee_id=1`, the query becomes:
+```sql
+SELECT * FROM employees WHERE id = 1
+```
+
+But what if you visit `?employee_id=1 OR 1=1`? The query becomes:
+```sql
+SELECT * FROM employees WHERE id = 1 OR 1=1
+```
+
+Since `1=1` is always true, this returns ALL employees instead of just one!
+
+**Why is this dangerous?**
+
+With SQL injection, attackers can:
+- **Read sensitive data** - Extract usernames, passwords, credit cards
+- **Bypass authentication** - Log in without valid credentials
+- **Modify data** - Change prices, delete records, add admin accounts
+- **Execute system commands** - On some databases, run OS commands
+
+**Boolean-Based Testing**
+
+The simplest way to test for SQLi is with boolean conditions:
+- `AND 1=1` - Always TRUE, query should work normally
+- `AND 1=2` - Always FALSE, query should return nothing
+
+If the page behaves differently between these two, the input is being executed as SQL!
+
+### 2.5 Testing for SQL Injection
 
 The page has two potential injection points:
 1. The `search` parameter (search box)
@@ -175,7 +218,7 @@ curl -s "http://172.16.0.100/employees/?employee_id=1%20AND%201=2" | grep -o 'No
 - `WHERE id = 1 AND 1=2` (false) → returns no rows → no notes section
 - **Different responses confirm SQL injection!** The injected SQL is being executed.
 
-### 2.5 Extracting Data with SQLMap
+### 2.6 Extracting Data with SQLMap
 
 Now let's use sqlmap to automate the extraction:
 
@@ -200,7 +243,7 @@ sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id -D wordp
 
 **Expected result:** You should see a table called `wp_acme_employees`.
 
-### 2.6 Dumping Credentials
+### 2.7 Dumping Credentials
 
 ```bash
 # Dump the employee table
