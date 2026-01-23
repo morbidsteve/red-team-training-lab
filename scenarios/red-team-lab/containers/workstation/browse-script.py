@@ -30,7 +30,7 @@ def browse_wordpress():
         time.sleep(random.uniform(2, 5))
 
         print(f"[*] Visiting employee directory...")
-        browser.get(f"{wordpress_url}/employee-directory/")
+        browser.get(f"{wordpress_url}/employees/")
         time.sleep(random.uniform(3, 8))
 
         try:
@@ -43,7 +43,7 @@ def browse_wordpress():
             print(f"[!] Error clicking: {e}")
 
         print(f"[*] Searching employee directory...")
-        browser.get(f"{wordpress_url}/employee-directory/?search=IT")
+        browser.get(f"{wordpress_url}/employees/?search=IT")
         time.sleep(random.uniform(3, 6))
 
     except Exception as e:
