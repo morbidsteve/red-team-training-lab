@@ -4,7 +4,7 @@ set -e
 
 REALM="${1:-ACMEWIDGETS.LOCAL}"
 DOMAIN="${2:-ACME}"
-ADMIN_PASS="${3:-Adm1n2024!}"
+ADMIN_PASS="${3:-Adm1n2024}"
 
 echo "Provisioning Samba AD DC..."
 echo "  Realm: $REALM"

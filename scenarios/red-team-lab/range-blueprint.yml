@@ -99,7 +99,7 @@ vms:
     description: "Windows Server 2019 Domain Controller"
     tags: ["victim", "windows", "dc"]
     username: "Administrator"
-    password: "Adm1n2024!"
+    password: "Adm1n2024"
     display_type: "server"
 
   - name: fileserver

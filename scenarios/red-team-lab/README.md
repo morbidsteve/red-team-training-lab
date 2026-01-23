@@ -144,7 +144,7 @@ All credentials are intentionally weak and reused across systems:
 | MySQL | wp_user | Acme2024! | Can read secrets DB |
 | RouterOS | admin | Mikr0t1k! | Router admin |
 | RouterOS | backup | backup123 | Weak for brute force |
-| AD | Administrator | Adm1n2024! | Domain admin |
+| AD | Administrator | Adm1n2024 | Domain admin |
 | AD | svc_backup | Backup2024 | Has DCSync rights |
 
 ## Student Objectives

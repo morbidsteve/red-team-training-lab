@@ -4,7 +4,7 @@ set -e
 # Domain configuration (can be overridden via environment variables)
 REALM="${SAMBA_REALM:-ACMEWIDGETS.LOCAL}"
 DOMAIN="${SAMBA_DOMAIN:-ACME}"
-ADMIN_PASS="${SAMBA_ADMIN_PASS:-Adm1n2024!}"
+ADMIN_PASS="${SAMBA_ADMIN_PASS:-Adm1n2024}"
 
 # Check if domain is already provisioned
 if [ ! -f /var/lib/samba/private/sam.ldb ]; then
