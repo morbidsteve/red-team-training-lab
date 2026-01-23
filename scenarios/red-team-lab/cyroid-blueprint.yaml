@@ -1,5 +1,5 @@
 # Red Team Training Lab Blueprint for CYROID
-# Copy this file to CYROID's data/scenarios/ directory
+# Import this blueprint via CYROID's Range Import feature
 
 seed_id: red-team-training-lab
 name: Red Team Training Lab
@@ -7,11 +7,14 @@ description: |
   Comprehensive red team training environment featuring:
   - Kali Attack Box with pre-installed tools (Metasploit, Impacket, CrackMapExec, etc.)
   - WordPress target with SQL injection vulnerabilities
-  - Windows/Samba Domain Controller
+  - Samba Domain Controller (AD-compatible)
   - Internal file server with sensitive data
   - Victim workstation for BeEF exploitation
 
   Attack paths: SQLi → Credential theft → Lateral movement → Domain compromise
+
+  NOTE: DCSync with Impacket has limited support on Samba 4. Alternative path uses
+  credentials found in passwords.txt on the file server.
 
 category: red-team
 difficulty: intermediate
@@ -37,53 +40,66 @@ networks:
     is_isolated: true
 
 vms:
-  # Attack box
+  # Attack box - connected to all networks for attack chain
   - hostname: kali
-    template_name: "Red Team - Kali Attack Box"
-    network_name: internet
-    ip_address: "172.16.0.10"
+    docker_image_tag: "redteam-lab-kali:latest"
+    networks:
+      - network_name: internet
+        ip_address: "172.16.0.10"
+      - network_name: dmz
+        ip_address: "172.16.1.100"
+      - network_name: internal
+        ip_address: "172.16.2.100"
     cpu: 2
     ram_mb: 4096
     disk_gb: 40
     position_x: 100
     position_y: 200
 
-  # DMZ - Web server (dual-homed)
-  - hostname: webserver
-    template_name: "Red Team - WordPress Target"
-    network_name: dmz
-    ip_address: "172.16.1.10"
+  # DMZ - WordPress (dual-homed: public + DMZ)
+  - hostname: wordpress
+    docker_image_tag: "redteam-lab-wordpress:latest"
+    networks:
+      - network_name: internet
+        ip_address: "172.16.0.100"
+      - network_name: dmz
+        ip_address: "172.16.1.10"
     cpu: 1
     ram_mb: 2048
     disk_gb: 20
     position_x: 400
     position_y: 200
 
-  # Internal network
+  # Internal network - Samba Domain Controller
   - hostname: dc01
-    template_name: "Red Team - Windows DC"
-    network_name: internal
-    ip_address: "172.16.2.10"
+    docker_image_tag: "redteam-lab-samba-dc:latest"
+    networks:
+      - network_name: internal
+        ip_address: "172.16.2.12"
     cpu: 2
     ram_mb: 4096
     disk_gb: 40
     position_x: 700
     position_y: 100
 
+  # Internal network - File Server with sensitive data
   - hostname: fileserver
-    template_name: "Red Team - File Server"
-    network_name: internal
-    ip_address: "172.16.2.20"
+    docker_image_tag: "redteam-lab-fileserver:latest"
+    networks:
+      - network_name: internal
+        ip_address: "172.16.2.10"
     cpu: 1
     ram_mb: 1024
     disk_gb: 20
     position_x: 700
     position_y: 200
 
+  # Internal network - Victim Workstation
   - hostname: ws01
-    template_name: "Red Team - Victim Workstation"
-    network_name: internal
-    ip_address: "172.16.2.30"
+    docker_image_tag: "redteam-lab-workstation:latest"
+    networks:
+      - network_name: internal
+        ip_address: "172.16.2.11"
     cpu: 1
     ram_mb: 2048
     disk_gb: 20
@@ -94,29 +110,84 @@ router:
   enabled: true
   dhcp_enabled: false
 
-# Training scenario events (optional)
+# Training scenario events (MSEL)
 events:
   - sequence: 1
     delay_minutes: 0
     title: "Phase 1: Reconnaissance"
-    description: "Use Kali tools to scan and enumerate the DMZ webserver"
+    description: |
+      Use Kali tools to scan and enumerate the target networks.
+
+      Commands:
+        nmap -sn 172.16.0.0/24   # Discover internet-facing hosts
+        nmap -sV 172.16.0.100    # Scan WordPress server
 
   - sequence: 2
     delay_minutes: 15
-    title: "Phase 2: Initial Access"
-    description: "Exploit SQL injection in WordPress to extract credentials"
+    title: "Phase 2: Initial Access - Web Application Attack"
+    description: |
+      Exploit SQL injection in the WordPress Employee Directory plugin.
+
+      Access: http://172.16.0.100/?page_id=4
+      Search for: IT
+
+      The plugin has SQLi in the search parameter. Extract VPN credentials
+      from the wp_acme_employees table:
+        - jsmith / Summer2024
+        - mwilliams / Welcome123
+        - svc_backup / Backup2024!
 
   - sequence: 3
     delay_minutes: 30
-    title: "Phase 3: Credential Harvesting"
-    description: "Use extracted credentials to access internal network"
+    title: "Phase 3: Lateral Movement - File Server Access"
+    description: |
+      Use extracted credentials to access the internal file server.
+
+      Commands:
+        smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'ls'
+        smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.txt -'
+
+      The passwords.txt file contains the Domain Administrator password.
 
   - sequence: 4
     delay_minutes: 45
-    title: "Phase 4: Lateral Movement"
-    description: "Move from webserver to internal hosts using Impacket"
+    title: "Phase 4: Domain Compromise"
+    description: |
+      Use discovered credentials to access the Domain Controller.
+
+      The passwords.txt file contains: Administrator / Adm1n2024!
+
+      Alternative DCSync path (limited Samba support):
+        impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
+
+      Note: DCSync may not work fully with Samba 4. Use the passwords.txt method.
 
   - sequence: 5
     delay_minutes: 60
-    title: "Phase 5: Domain Compromise"
-    description: "Extract domain admin credentials and compromise DC"
+    title: "Phase 5: Post-Exploitation"
+    description: |
+      With Domain Admin credentials, access all internal systems:
+        - DC01 (172.16.2.12): Domain Controller
+        - Fileserver (172.16.2.10): Sensitive documents
+        - WS01 (172.16.2.11): Victim workstation
+
+      Document your attack chain for the after-action review.
+
+# Credentials Reference (for evaluators)
+credentials:
+  wordpress_admin:
+    username: admin
+    password: "Acme2024!"
+  wordpress_users:
+    - username: jsmith
+      password: "Summer2024"
+    - username: mwilliams
+      password: "Welcome123"
+  service_accounts:
+    - username: svc_backup
+      password: "Backup2024!"
+      notes: "DCSync rights on domain"
+  domain_admin:
+    username: Administrator
+    password: "Adm1n2024!"
+    notes: "Found in passwords.txt on fileserver"

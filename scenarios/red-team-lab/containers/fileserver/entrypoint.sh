@@ -16,8 +16,14 @@ configure_routing
 create_smb_user() {
     local user=$1
     local pass=$2
+    # Create Unix user if not exists
     useradd -M -s /sbin/nologin "$user" 2>/dev/null || true
-    echo -e "$pass\n$pass" | smbpasswd -a -s "$user"
+    # Add to smbpasswd database - use printf for portability
+    # The -s flag reads password from stdin, -a adds new user
+    printf '%s\n%s\n' "$pass" "$pass" | smbpasswd -a -s "$user"
+    # Enable the user in case it was disabled
+    smbpasswd -e "$user" 2>/dev/null || true
+    echo "Created SMB user: $user"
 }
 
 # Create users matching AD credentials

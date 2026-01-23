@@ -77,54 +77,42 @@ DOMAIN_DN="DC=${REALM//./,DC=}"
 #
 # This is the intentional misconfiguration that allows DCSync attack
 
-# Method 1: Use samba-tool dsacl (preferred)
-samba-tool dsacl set \
-    --objectdn="$DOMAIN_DN" \
-    --action=allow \
-    --principal="$DOMAIN\\svc_backup" \
-    --rights="CR" \
-    --rightstype="control_access" \
-    --rightsattrguid="1131f6aa-9c07-11d1-f79f-00c04fc2dcd2" || {
-    echo "Warning: Could not set DS-Replication-Get-Changes via dsacl, trying alternative method..."
-}
+# Get the SID of svc_backup user for ACL configuration
+echo "Getting SID for svc_backup..."
+SVC_BACKUP_SID=$(samba-tool user show svc_backup --attributes=objectSid 2>/dev/null | grep objectSid | awk '{print $2}' | tr -d '\r\n')
 
-samba-tool dsacl set \
-    --objectdn="$DOMAIN_DN" \
-    --action=allow \
-    --principal="$DOMAIN\\svc_backup" \
-    --rights="CR" \
-    --rightstype="control_access" \
-    --rightsattrguid="1131f6ad-9c07-11d1-f79f-00c04fc2dcd2" || {
-    echo "Warning: Could not set DS-Replication-Get-Changes-All via dsacl, trying alternative method..."
-}
+if [ -z "$SVC_BACKUP_SID" ]; then
+    echo "Warning: Could not get SID for svc_backup, using fallback method..."
+    # Fallback: get SID from wbinfo
+    SVC_BACKUP_SID=$(wbinfo -n "${DOMAIN}\\svc_backup" 2>/dev/null | awk '{print $1}')
+fi
 
-# Method 2: Alternative using ldbmodify if dsacl doesn't work
-# This adds the ACEs directly to the nTSecurityDescriptor
-cat > /tmp/dcsync-acl.ldif << EOF
-dn: $DOMAIN_DN
-changetype: modify
-add: nTSecurityDescriptor
-nTSecurityDescriptor:: $(python3 << 'PYEOF'
-import subprocess
-import base64
+if [ -n "$SVC_BACKUP_SID" ]; then
+    echo "svc_backup SID: $SVC_BACKUP_SID"
 
-# Get the SID of svc_backup
-result = subprocess.run(
-    ['wbinfo', '-n', 'svc_backup'],
-    capture_output=True, text=True
-)
-if result.returncode != 0:
-    # Try alternative method
-    result = subprocess.run(
-        ['samba-tool', 'user', 'show', 'svc_backup', '--attributes=objectSid'],
-        capture_output=True, text=True
-    )
+    # Grant DCSync rights using SDDL format
+    # DS-Replication-Get-Changes (1131f6aa-9c07-11d1-f79f-00c04fc2dcd2)
+    samba-tool dsacl set \
+        --objectdn="$DOMAIN_DN" \
+        --sddl="(OA;;CR;1131f6aa-9c07-11d1-f79f-00c04fc2dcd2;;$SVC_BACKUP_SID)" 2>/dev/null || {
+        echo "Warning: Could not set DS-Replication-Get-Changes via SDDL"
+    }
 
-# For now, just print empty - the dsacl method above should work
-print("")
-PYEOF
-)
-EOF
+    # DS-Replication-Get-Changes-All (1131f6ad-9c07-11d1-f79f-00c04fc2dcd2)
+    samba-tool dsacl set \
+        --objectdn="$DOMAIN_DN" \
+        --sddl="(OA;;CR;1131f6ad-9c07-11d1-f79f-00c04fc2dcd2;;$SVC_BACKUP_SID)" 2>/dev/null || {
+        echo "Warning: Could not set DS-Replication-Get-Changes-All via SDDL"
+    }
+
+    echo "DCSync rights configured for svc_backup"
+else
+    echo "ERROR: Could not determine SID for svc_backup - DCSync rights not configured!"
+fi
+
+echo ""
+echo "NOTE: Samba 4 has limited DCSync support with Impacket tools."
+echo "The alternative attack path is to use credentials found in passwords.txt on the file server."
 
 echo ""
 echo "=== Verifying DCSync Rights ==="

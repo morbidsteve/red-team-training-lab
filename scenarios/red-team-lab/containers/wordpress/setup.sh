@@ -72,7 +72,17 @@ if ! wp core is-installed --path=/var/www/html --allow-root 2>/dev/null; then
         --path=/var/www/html \
         --allow-root
 
+    # Configure permalinks for pretty URLs
+    wp rewrite structure '/%postname%/' --path=/var/www/html --allow-root
+    wp rewrite flush --path=/var/www/html --allow-root
+
     echo "WordPress installation complete!"
+fi
+
+# Configure Apache to allow .htaccess overrides for permalinks
+if ! grep -q "AllowOverride All" /etc/apache2/apache2.conf; then
+    sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+    echo "Enabled AllowOverride All for /var/www/"
 fi
 
 # Start Apache in foreground
