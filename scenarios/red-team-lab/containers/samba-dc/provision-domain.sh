@@ -57,7 +57,7 @@ samba-tool user create mwilliams "Welcome123" \
 samba-tool group addmembers "Accounting" mwilliams || true
 
 # svc_backup - Service account with DCSync rights (MISCONFIGURATION!)
-samba-tool user create svc_backup "Backup2024!" \
+samba-tool user create svc_backup "Backup2024" \
     --given-name="Backup" \
     --surname="Service" \
     --mail-address="svc_backup@${REALM,,}" \
@@ -130,8 +130,8 @@ echo ""
 echo "Users created:"
 echo "  - jsmith / Summer2024 (IT Support)"
 echo "  - mwilliams / Welcome123 (Accounting)"
-echo "  - svc_backup / Backup2024! (Backup Operators + DCSync rights!)"
+echo "  - svc_backup / Backup2024 (Backup Operators + DCSync rights!)"
 echo ""
 echo "DCSync Attack Test:"
-echo "  impacket-secretsdump '${REALM,,}/svc_backup:Backup2024!@<DC_IP>'"
+echo "  impacket-secretsdump '${REALM,,}/svc_backup:Backup2024@<DC_IP>'"
 echo ""

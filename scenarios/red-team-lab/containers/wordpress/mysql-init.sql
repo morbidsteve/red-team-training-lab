@@ -19,7 +19,7 @@ INSERT INTO secrets.admin_accounts (service, username, password, notes) VALUES
 ('RouterOS', 'admin', 'Mikr0t1k!', 'Main router admin'),
 ('RouterOS', 'backup', 'backup123', 'Backup account'),
 ('Domain Admin', 'Administrator', 'Adm1n2024!', 'AD domain admin'),
-('Backup Service', 'svc_backup', 'Backup2024!', 'Has DCSync rights');
+('Backup Service', 'svc_backup', 'Backup2024', 'Has DCSync rights');
 
 -- Misconfiguration: wp_user can read secrets
 GRANT SELECT ON secrets.* TO 'wp_user'@'localhost';

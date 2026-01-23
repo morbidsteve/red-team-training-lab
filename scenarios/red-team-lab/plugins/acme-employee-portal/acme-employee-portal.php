@@ -61,7 +61,7 @@ function acme_portal_activate() {
         'phone' => '',
         'notes' => 'Service account for backups - DO NOT DELETE',
         'vpn_username' => 'svc_backup',
-        'vpn_password' => 'Backup2024!'
+        'vpn_password' => 'Backup2024'
     ));
 }
 

