@@ -482,8 +482,10 @@ smbclient //172.16.2.12/sysvol -U 'Administrator%Adm1n2024' -c 'ls'
 You can also verify via LDAP:
 ```bash
 # Query domain users as Domain Admin
-ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-  -w 'Adm1n2024' -b 'DC=acmewidgets,DC=local' '(objectClass=user)' cn -ZZ
+# Note: LDAPTLS_REQCERT=never is needed because the DC uses a self-signed certificate
+LDAPTLS_REQCERT=never ldapsearch -x -H ldap://172.16.2.12 -ZZ \
+  -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+  -w 'Adm1n2024' -b 'DC=acmewidgets,DC=local' '(objectClass=user)' cn
 ```
 
 **You now have Domain Admin access!**
@@ -517,12 +519,15 @@ Use LDAP or Samba tools to enumerate the domain:
 ```bash
 # List all domain users (via samba-tool if you have shell access)
 # Or enumerate via LDAP from Kali:
-ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-  -w 'Adm1n2024' -b 'cn=Users,DC=acmewidgets,DC=local' '(objectClass=user)' sAMAccountName -ZZ
+# Note: LDAPTLS_REQCERT=never bypasses self-signed certificate verification
+LDAPTLS_REQCERT=never ldapsearch -x -H ldap://172.16.2.12 -ZZ \
+  -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+  -w 'Adm1n2024' -b 'cn=Users,DC=acmewidgets,DC=local' '(objectClass=user)' sAMAccountName
 
 # Check group memberships
-ldapsearch -x -H ldap://172.16.2.12 -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
-  -w 'Adm1n2024' -b 'DC=acmewidgets,DC=local' '(cn=Domain Admins)' member -ZZ
+LDAPTLS_REQCERT=never ldapsearch -x -H ldap://172.16.2.12 -ZZ \
+  -D "cn=Administrator,cn=Users,DC=acmewidgets,DC=local" \
+  -w 'Adm1n2024' -b 'DC=acmewidgets,DC=local' '(cn=Domain Admins)' member
 ```
 
 ### 6.3 Create Persistence (For Education Only)
